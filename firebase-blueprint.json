@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user profile in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "faculty"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "An assignment entry.",
+      "type": "object",
+      "properties": {
+        "t": { "type": "string" },
+        "d": { "type": "string" },
+        "u": { "type": "boolean" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["t", "creatorId", "createdAt"]
+    },
+    "AssignmentCompletion": {
+      "title": "Assignment Completion",
+      "description": "Junction for student completing assignment",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "assignmentId": { "type": "string" },
+        "done": { "type": "boolean" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["studentId", "assignmentId", "done"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Campus event.",
+      "type": "object",
+      "properties": {
+        "t": { "type": "string" },
+        "day": { "type": "string" },
+        "mon": { "type": "string" },
+        "l": { "type": "string" },
+        "c": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["t", "creatorId"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Campus announcement",
+      "type": "object",
+      "properties": {
+        "t": { "type": "string" },
+        "b": { "type": "string" },
+        "d": { "type": "string" },
+        "c": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["t", "b", "creatorId"]
+    },
+    "TimetableSlot": {
+      "title": "TimetableSlot",
+      "description": "A single slot.",
+      "type": "object",
+      "properties": {
+        "day": { "type": "string" },
+        "t": { "type": "string" },
+        "s": { "type": "string" },
+        "l": { "type": "string" },
+        "type": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["day", "t", "s"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/Assignment" },
+      "description": "Stores assignments."
+    },
+    "assignmentCompletions/{completionId}": {
+      "schema": { "$ref": "#/entities/AssignmentCompletion" },
+      "description": "Tracks which assignment is done by which student."
+    },
+    "events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Stores campus events."
+    },
+    "announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Stores announcements."
+    },
+    "timetable/{slotId}": {
+      "schema": { "$ref": "#/entities/TimetableSlot" },
+      "description": "Stores timetable slots."
+    }
+  }
+}

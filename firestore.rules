@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+
+    function isFaculty() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role']) && data.keys().size() <= 5 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.role in ['student', 'faculty'] &&
+             (data.keys().hasAny(['phone']) ? (data.phone is string && data.phone.size() <= 20) : true) &&
+             (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
+    }
+
+    function isValidAssignment(data) {
+        return data.keys().hasAll(['t', 'creatorId', 'createdAt']) && data.keys().size() <= 5 &&
+               data.t is string && data.t.size() > 0 && data.t.size() <= 200 &&
+               data.creatorId == request.auth.uid &&
+               data.createdAt is number &&
+               (data.keys().hasAny(['d']) ? (data.d is string && data.d.size() <= 100) : true) &&
+               (data.keys().hasAny(['u']) ? (data.u is bool) : true);
+    }
+
+    function isValidAssignmentCompletion(data) {
+        return data.keys().hasAll(['studentId', 'assignmentId', 'done']) && data.keys().size() <= 4 &&
+               data.studentId == request.auth.uid &&
+               data.assignmentId is string && data.assignmentId.size() <= 128 &&
+               data.done is bool &&
+               (data.keys().hasAny(['updatedAt']) ? (data.updatedAt is number) : true);
+    }
+
+    function isValidEvent(data) {
+        return data.keys().hasAll(['t', 'creatorId']) && data.keys().size() <= 7 &&
+               data.t is string && data.t.size() > 0 && data.t.size() <= 200 &&
+               data.creatorId == request.auth.uid &&
+               (data.keys().hasAny(['day']) ? (data.day is string && data.day.size() <= 10) : true) &&
+               (data.keys().hasAny(['mon']) ? (data.mon is string && data.mon.size() <= 10) : true) &&
+               (data.keys().hasAny(['l']) ? (data.l is string && data.l.size() <= 200) : true) &&
+               (data.keys().hasAny(['c']) ? (data.c is string && data.c.size() <= 50) : true) &&
+               (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
+    }
+
+    function isValidAnnouncement(data) {
+        return data.keys().hasAll(['t', 'b', 'creatorId']) && data.keys().size() <= 6 &&
+               data.t is string && data.t.size() > 0 && data.t.size() <= 200 &&
+               data.b is string && data.b.size() <= 5000 &&
+               data.creatorId == request.auth.uid &&
+               (data.keys().hasAny(['d']) ? (data.d is string && data.d.size() <= 100) : true) &&
+               (data.keys().hasAny(['c']) ? (data.c is string && data.c.size() <= 50) : true) &&
+               (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
+    }
+
+    function isValidTimetableSlot(data) {
+        return data.keys().hasAll(['day', 't', 's']) && data.keys().size() <= 7 &&
+               data.day is string && data.day.size() > 0 && data.day.size() <= 20 &&
+               data.t is string && data.t.size() > 0 && data.t.size() <= 20 &&
+               data.s is string && data.s.size() > 0 && data.s.size() <= 100 &&
+               (data.keys().hasAny(['l']) ? (data.l is string && data.l.size() <= 100) : true) &&
+               (data.keys().hasAny(['type']) ? (data.type is string && data.type.size() <= 50) : true) &&
+               (data.keys().hasAny(['creatorId']) ? (data.creatorId == request.auth.uid) : true) &&
+               (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn(); // Allow reading profiles for app display
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone']);
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow create: if isFaculty() && isValidId(assignmentId) && isValidAssignment(incoming());
+      allow update: if isFaculty() && isValidId(assignmentId) && isValidAssignment(incoming()) && incoming().creatorId == existing().creatorId;
+      allow delete: if isFaculty() && existing().creatorId == request.auth.uid;
+    }
+
+    match /assignmentCompletions/{completionId} {
+      // Allow student to track their own assignment completion
+      allow read: if isSignedIn() && resource.data.studentId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(completionId) && isValidAssignmentCompletion(incoming());
+      allow update: if isSignedIn() && isValidId(completionId) && isValidAssignmentCompletion(incoming()) && incoming().studentId == existing().studentId && incoming().assignmentId == existing().assignmentId && incoming().diff(existing()).affectedKeys().hasOnly(['done', 'updatedAt']);
+    }
+
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isFaculty() && isValidId(eventId) && isValidEvent(incoming());
+      allow delete: if isFaculty() && existing().creatorId == request.auth.uid;
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create: if isFaculty() && isValidId(announcementId) && isValidAnnouncement(incoming());
+      allow delete: if isFaculty() && existing().creatorId == request.auth.uid;
+    }
+
+    match /timetable/{slotId} {
+      allow read: if isSignedIn();
+      allow create: if isFaculty() && isValidId(slotId) && isValidTimetableSlot(incoming());
+      allow delete: if isFaculty() && existing().creatorId == request.auth.uid;
+    }
+  }
+}
