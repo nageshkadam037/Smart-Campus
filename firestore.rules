@@ -73,6 +73,11 @@ service cloud.firestore {
                (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
     }
 
+    match /system/{docId} {
+      allow read: if true;
+      allow write: if isFaculty();
+    }
+    
     match /users/{userId} {
       allow read: if isSignedIn(); // Allow reading profiles for app display
       allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming());

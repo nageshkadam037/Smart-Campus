@@ -81,8 +81,48 @@ let students: any[] = [];
 // Fetch initial data from backend
 async function fetchInitialData() {
   try {
-    const res = await fetch('/api/data');
-    const data = await res.json();
+    const docSnap = await getDoc(doc(db, 'system', 'data'));
+    let data;
+    if (docSnap.exists()) {
+      data = docSnap.data();
+    } else {
+      // Default initial data
+      data = {
+        tt: [
+          {day:'Monday',slots:[{t:'9-10',s:'Mathematics',l:'R-101',type:'Lecture'},{t:'11-12',s:'DBMS',l:'R-203',type:'Lab'},{t:'2-3',s:'AI & ML',l:'R-307',type:'Lecture'}]},
+          {day:'Tuesday',slots:[{t:'9-10',s:'Data Structures',l:'R-204',type:'Lab'},{t:'1-2',s:'Networks',l:'R-102',type:'Lecture'}]},
+          {day:'Wednesday',slots:[{t:'10-11',s:'DBMS',l:'R-101',type:'Lecture'},{t:'2-4',s:'Project Work',l:'Lab-A',type:'Project'}]},
+          {day:'Thursday',slots:[{t:'9-10',s:'Mathematics',l:'R-101',type:'Lecture'},{t:'11-12',s:'AI & ML',l:'R-307',type:'Tutorial'}]},
+          {day:'Friday',slots:[{t:'9-11',s:'Networks Lab',l:'Lab-B',type:'Lab'},{t:'2-3',s:'Seminar',l:'Auditorium',type:'Event'}]},
+        ],
+        assigns: [
+          {t:'AI Project - Final Submission',d:'Apr 14',u:true,done:false},
+          {t:'DBMS Lab Report',d:'Apr 16',u:false,done:false},
+          {t:'Networks Assignment 3',d:'Apr 20',u:false,done:true},
+        ],
+        events: [
+          {day:'12',mon:'Apr',t:'Tech Fest 2026',l:'Main Ground',c:'Festival'},
+          {day:'15',mon:'Apr',t:'Placement Drive - TCS',l:'Seminar Hall',c:'Career'},
+          {day:'18',mon:'Apr',t:'Project Exhibition',l:'Block C, Lab',c:'Academic'},
+          {day:'22',mon:'Apr',t:'Sports Day',l:'Sports Complex',c:'Sports'},
+        ],
+        anns: [
+          {t:'Holiday - Apr 14',b:'Campus remains closed for Dr. Ambedkar Jayanti.',d:'Apr 10',c:'Holiday'},
+          {t:'Fee Reminder',b:'Last date for semester fee payment is April 25.',d:'Apr 9',c:'Admin'},
+          {t:'Internal Exam Schedule',b:'Internals begin April 28. Timetable on notice board.',d:'Apr 8',c:'Exam'},
+        ],
+        students: [
+          {name:'Aarav Sharma',    roll:'CS001',pct:91},{name:'Priya Mehta',     roll:'CS002',pct:85},
+          {name:'Rohan Patil',     roll:'CS003',pct:72},{name:'Sneha Kulkarni',  roll:'CS004',pct:68},
+          {name:'Amit Desai',      roll:'CS005',pct:88},{name:'Pooja Joshi',     roll:'CS006',pct:55},
+          {name:'Rahul Nair',      roll:'CS007',pct:79},{name:'Anjali Singh',    roll:'CS008',pct:93},
+          {name:'Vivek Reddy',     roll:'CS009',pct:61},{name:'Meera Iyer',      roll:'CS010',pct:74},
+        ]
+      };
+      if (userRole === 'faculty') {
+        await setDoc(doc(db, 'system', 'data'), data);
+      }
+    }
     tt = data.tt || [];
     assigns = data.assigns || [];
     events = data.events || [];
@@ -102,6 +142,16 @@ async function fetchInitialData() {
   }
 }
 
+async function saveDb() {
+  try {
+    if (userRole === 'faculty') {
+      await setDoc(doc(db, 'system', 'data'), { tt, assigns, events, anns, students });
+    }
+  } catch (e) {
+    console.error('Failed to save to Firestore', e);
+  }
+}
+
 let notifInterval: any;
 let notifiedSlots: {[key:string]: boolean} = {};
 
@@ -114,8 +164,8 @@ function initPushNotifications() {
   
   notifInterval = setInterval(async () => {
     try {
-      const res = await fetch('/api/data');
-      const data = await res.json();
+      const docSnap = await getDoc(doc(db, 'system', 'data'));
+      const data = docSnap.exists() ? docSnap.data() : {anns:[], assigns:[], events:[], tt:[], students:[]};
       
       const currAnns = data.anns ? data.anns.length : 0;
       const currAssigns = data.assigns ? data.assigns.length : 0;
@@ -504,9 +554,7 @@ let cropperInst: Cropper | null = null;
   if (assigns[i]) {
     assigns[i].done = !assigns[i].done;
     renderAssigns();
-    try {
-      await fetch(`/api/assignments/${i}/toggle`, { method: 'POST' });
-    } catch (e) { console.error('Failed to toggle', e); }
+    await saveDb();
   }
 };
 
@@ -539,14 +587,7 @@ let pendingFile: File | null = null;
   document.getElementById('fileLabel')?.classList.remove('has-file');
   pendingFile=null;
   renderAssigns();
-  
-  try {
-      await fetch('/api/assignments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(entry)
-      });
-  } catch(e) { console.error(e); }
+  await saveDb();
 };
 
 let pendingEvFile: File | null=null;
@@ -580,14 +621,7 @@ let pendingEvFile: File | null=null;
   document.getElementById('evFileLabel')?.classList.remove('has-file');
   pendingEvFile=null;
   renderEvents();
-  
-  try {
-      await fetch('/api/events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(entry)
-      });
-  } catch(e) { console.error(e); }
+  await saveDb();
 };
 
 let pendingAnnFile: File | null=null;
@@ -616,14 +650,7 @@ let pendingAnnFile: File | null=null;
   document.getElementById('annFileLabel')?.classList.remove('has-file');
   pendingAnnFile=null;
   renderAnns();
-  
-  try {
-      await fetch('/api/announcements', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(entry)
-      });
-  } catch(e) { console.error(e); }
+  await saveDb();
 };
 
 (window as any).addSlot = async function(){
@@ -642,14 +669,7 @@ let pendingAnnFile: File | null=null;
   (document.getElementById('sch-sub') as HTMLInputElement).value='';
   (document.getElementById('sch-loc') as HTMLInputElement).value='';
   renderTT();
-  
-  try {
-      await fetch('/api/timetable', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ day, slot: newSlot })
-      });
-  } catch(e) { console.error(e); }
+  await saveDb();
 };
 
 (window as any).deleteSlot = async function(){
@@ -661,14 +681,7 @@ let pendingAnnFile: File | null=null;
     dayObj.slots.splice(idx,1);
     (document.getElementById('del-idx') as HTMLInputElement).value='';
     renderTT();
-    
-    try {
-        await fetch('/api/timetable', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ day, idx })
-        });
-    } catch(e) { console.error(e); }
+    await saveDb();
   }
 };
 
@@ -681,14 +694,7 @@ let pendingAnnFile: File | null=null;
   if(bar){bar.style.width=v+'%';bar.style.background=barColor(v);}
   if(inp){inp.style.color=barColor(v);}
   refreshDefaulters();
-  
-  try {
-      await fetch('/api/attendance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index: i, pct: v })
-      });
-  } catch(e) { console.error(e); }
+  await saveDb();
 };
 
 function renderAll(){
@@ -755,9 +761,7 @@ function renderTT(){
     if (type === 'event') { events.splice(idx, 1); endpoint = 'events'; }
     if (type === 'ann') { anns.splice(idx, 1); endpoint = 'announcements'; }
     renderAll();
-    try {
-      if(endpoint) await fetch(`/api/${endpoint}/${idx}`, { method: 'DELETE' });
-    } catch(e) {}
+    await saveDb();
   };
 
   actions.appendChild(cancel);
