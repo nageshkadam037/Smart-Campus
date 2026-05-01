@@ -10,16 +10,20 @@ const auth = getAuth(app);
 const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 let userRole='student';
-let collegeCode = '1234';
+let collegeCode = '25FC146';
 const pages=['dashboard','schedule','assignments','events','announcements','attendance'];
 
 async function syncCollegeCode() {
   try {
-    const res = await fetch('/api/config');
-    const data = await res.json();
-    collegeCode = data.collegeCode || '25FC146';
+    const docSnap = await getDoc(doc(db, 'system', 'config'));
+    if (docSnap.exists() && docSnap.data().collegeCode) {
+      collegeCode = docSnap.data().collegeCode;
+    } else {
+      collegeCode = '25FC146';
+    }
   } catch(e) {
-    console.warn('Backend config not found. Using default.');
+    console.warn('Config fetch failed, using default.');
+    collegeCode = '25FC146';
   }
 }
 
