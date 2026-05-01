@@ -35,10 +35,17 @@ const googleProvider = new GoogleAuthProvider();
     return;
   }
 
-  await syncCollegeCode();
-  if (codeVal !== collegeCode) {
-    showError('l-err', 'Invalid College Access Code.');
-    return;
+  if (userRole === 'faculty') {
+    if (codeVal !== '25FC01') {
+      showError('l-err', 'Invalid College Access Code for Faculty.');
+      return;
+    }
+  } else {
+    await syncCollegeCode();
+    if (codeVal !== collegeCode) {
+      showError('l-err', 'Invalid College Access Code.');
+      return;
+    }
   }
 
   try {
@@ -102,7 +109,6 @@ function initPushNotifications() {
   if(notifInterval) clearInterval(notifInterval);
   
   notifInterval = setInterval(async () => {
-    if (Notification.permission !== 'granted') return;
     try {
       const res = await fetch('/api/data');
       const data = await res.json();
@@ -116,41 +122,33 @@ function initPushNotifications() {
       const lastAssigns = (window as any).lastAssignsCount ?? currAssigns;
       const lastEvents = (window as any).lastEventsCount ?? currEvents;
       
-      let shouldFetch = false;
+      const hasPerms = Notification.permission === 'granted';
 
       if (currAnns !== lastAnns) {
-        if (currAnns > lastAnns && lastAnns > 0) {
+        if (hasPerms && currAnns > lastAnns && lastAnns > 0) {
           new Notification('Important Notification', { body: data.anns[0]?.t || 'New update posted' });
         }
-        shouldFetch = true;
       }
       
       if (currAssigns !== lastAssigns) {
-        if (currAssigns > lastAssigns && lastAssigns > 0) {
+        if (hasPerms && currAssigns > lastAssigns && lastAssigns > 0) {
           const newAsg = data.assigns[data.assigns.length - 1];
           new Notification('New Assignment', { body: `${newAsg?.t} due ${newAsg?.d||'soon'}` });
         }
-        shouldFetch = true;
-      }
-
-      if (currEvents !== lastEvents) {
-         shouldFetch = true;
       }
       
-      if (shouldFetch) (window as any).saveCollegeCode = async function() {
-  const code = (document.getElementById('adm-code') as HTMLInputElement).value;
-  if(!code) return alert("Code cannot be empty");
-  try {
-    await setDoc(doc(db, 'system', 'config'), { collegeCode: code });
-    collegeCode = code;
-    alert("College Access Code updated successfully!");
-  } catch(e) {
-    alert("Error updating code: " + e);
-  }
-};
-
-fetchInitialData();
-syncCollegeCode();
+      const currentDataStr = JSON.stringify({tt:data.tt, a:data.assigns, e:data.events, n:data.anns});
+      if ((window as any).lastDataStr && (window as any).lastDataStr !== currentDataStr) {
+        tt = data.tt || [];
+        assigns = data.assigns || [];
+        events = data.events || [];
+        anns = data.anns || [];
+        students = data.students || [];
+        if (document.getElementById('app')?.classList.contains('active')) {
+          renderAll();
+        }
+      }
+      (window as any).lastDataStr = currentDataStr;
       
       (window as any).lastAnnsCount = currAnns;
       (window as any).lastAssignsCount = currAssigns;
@@ -188,7 +186,7 @@ syncCollegeCode();
               if(diffMins >= 0 && diffMins <= 5) {
                   const slotId = todayStr + slot.t + slot.s;
                   if(!notifiedSlots[slotId]) {
-                      new Notification('Upcoming Class', { body: `${slot.s} starts at ${slot.t} in ${slot.l}` });
+                      if (hasPerms) new Notification('Upcoming Class', { body: `${slot.s} starts at ${slot.t} in ${slot.l}` });
                       notifiedSlots[slotId] = true;
                   }
               }
@@ -198,7 +196,7 @@ syncCollegeCode();
     } catch(e) {
       console.error('Notification check failed', e);
     }
-  }, 30000); // Check every 30s
+  }, 10000); // Check every 10s
 }
 
 // Global functions need to be on window for inline handlers
@@ -242,9 +240,15 @@ function hideError(id: string) {
   
   if(!email || !code) return showError('l-err', 'Please fill email and college code');
   
-  await syncCollegeCode();
-  if (code !== collegeCode) {
-    return showError('l-err', 'Invalid College Access Code.');
+  if (userRole === 'faculty') {
+    if (code !== '25FC01') {
+      return showError('l-err', 'Invalid College Access Code for Faculty.');
+    }
+  } else {
+    await syncCollegeCode();
+    if (code !== collegeCode) {
+      return showError('l-err', 'Invalid College Access Code.');
+    }
   }
 
   const pass = email.toLowerCase() + "Campus#123!";
@@ -257,7 +261,7 @@ function hideError(id: string) {
   try {
     await signInWithEmailAndPassword(auth, email, pass);
   } catch(e: any) {
-    if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found') {
+    if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
       try {
         const cred = await createUserWithEmailAndPassword(auth, email, pass);
         await setDoc(doc(db, 'users', cred.user.uid), {
@@ -266,17 +270,7 @@ function hideError(id: string) {
         return;
       } catch (regErr: any) {
         if (regErr.code === 'auth/email-already-in-use') {
-          const userPass = prompt('This account was created with a custom password previously. Please enter your password to login:');
-          if (userPass) {
-            try {
-              await signInWithEmailAndPassword(auth, email, userPass);
-              return;
-            } catch(e: any) {
-              showError('l-err', 'Incorrect password.');
-            }
-          } else {
-            showError('l-err', 'Password is required for legacy accounts.');
-          }
+          showError('l-err', `Old account detected! Since you removed the password field, you must delete this user (${email}) in your Firebase Authentication Console first. Then try again!`);
         } else {
           showError('l-err', 'Invalid credentials or ' + regErr.message);
         }
@@ -302,6 +296,7 @@ onAuthStateChanged(auth, async (user) => {
         const isOnLogin = document.getElementById('login')?.classList.contains('active');
         if (isOnLogin && data.role && data.role !== userRole) {
           await signOut(auth);
+          (window as any).setRole(data.role);
           showError('l-err', `This account is registered as a ${data.role}. Please select ${data.role} above to sign in.`);
           const btn = document.getElementById('l-btn') as HTMLButtonElement;
           if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
@@ -366,12 +361,13 @@ onAuthStateChanged(auth, async (user) => {
     }, 100);
   }
   (window as any).go('app'); 
-  renderAll();
+  fetchInitialData().then(() => renderAll());
   initPushNotifications();
 };
 
 (window as any).doLogout = async function(){
   await signOut(auth);
+  (window as any).setRole('student');
 };
 (window as any).openDrawer = function(){document.getElementById('drawer-overlay')?.classList.add('open');};
 (window as any).closeDrawer = function(e: any){if(e.target===document.getElementById('drawer-overlay'))(window as any).closeDrawerDirect();};
@@ -729,16 +725,42 @@ function renderTT(){
   });
 }
 
-(window as any).deleteItem = async function(type: string, idx: number) {
-  if (!confirm('Are you sure you want to delete this item?')) return;
-  let endpoint = '';
-  if (type === 'assign') { assigns.splice(idx, 1); endpoint = 'assignments'; }
-  if (type === 'event') { events.splice(idx, 1); endpoint = 'events'; }
-  if (type === 'ann') { anns.splice(idx, 1); endpoint = 'announcements'; }
-  renderAll();
-  try {
-    if(endpoint) await fetch(`/api/${endpoint}/${idx}`, { method: 'DELETE' });
-  } catch(e) {}
+(window as any).deleteItem = function(type: string, idx: number) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--card-bg, #181825);padding:24px;border-radius:12px;text-align:center;max-width:300px;';
+  box.innerHTML = `<div style="font-weight:bold;margin-bottom:8px;color:#fff">Confirm Deletion</div><div style="font-size:14px;color:var(--muted);margin-bottom:20px;">Are you sure you want to delete this item?</div>`;
+  
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+  
+  const cancel = document.createElement('button');
+  cancel.innerText = 'Cancel';
+  cancel.style.cssText = 'padding:8px 16px;border-radius:6px;border:none;background:var(--bg, #11111b);color:#fff;cursor:pointer;';
+  cancel.onclick = () => document.body.removeChild(overlay);
+  
+  const confirmBtn = document.createElement('button');
+  confirmBtn.innerText = 'Delete';
+  confirmBtn.style.cssText = 'padding:8px 16px;border-radius:6px;border:none;background:var(--danger, #f38ba8);color:#111;cursor:pointer;font-weight:bold;';
+  confirmBtn.onclick = async () => {
+    document.body.removeChild(overlay);
+    let endpoint = '';
+    if (type === 'assign') { assigns.splice(idx, 1); endpoint = 'assignments'; }
+    if (type === 'event') { events.splice(idx, 1); endpoint = 'events'; }
+    if (type === 'ann') { anns.splice(idx, 1); endpoint = 'announcements'; }
+    renderAll();
+    try {
+      if(endpoint) await fetch(`/api/${endpoint}/${idx}`, { method: 'DELETE' });
+    } catch(e) {}
+  };
+
+  actions.appendChild(cancel);
+  actions.appendChild(confirmBtn);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 };
 
 function getAdminControls(type: string, idx: number) {
@@ -831,4 +853,72 @@ window.addEventListener('load',function(){
   }
   fetchInitialData();
   syncCollegeCode();
+  subscribeToBackgroundPush();
 });
+
+(window as any).saveCollegeCode = async function() {
+  const code = (document.getElementById('adm-code') as HTMLInputElement).value;
+  if(!code) return customAlert("Code cannot be empty");
+  try {
+    await setDoc(doc(db, 'system', 'config'), { collegeCode: code });
+    collegeCode = code;
+    customAlert("College Access Code updated successfully!");
+  } catch(e) {
+    customAlert("Error updating code: " + e);
+  }
+};
+
+function customAlert(msg: string) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--card-bg, #181825);padding:24px;border-radius:12px;text-align:center;max-width:300px;';
+  box.innerHTML = `<div style="font-weight:bold;margin-bottom:12px;color:#fff">${msg}</div>`;
+  
+  const okBtn = document.createElement('button');
+  okBtn.innerText = 'OK';
+  okBtn.style.cssText = 'padding:8px 24px;border-radius:6px;border:none;background:var(--accent, #a855f7);color:#fff;cursor:pointer;font-weight:bold;';
+  okBtn.onclick = () => document.body.removeChild(overlay);
+  
+  box.appendChild(okBtn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function subscribeToBackgroundPush() {
+  if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission !== 'denied') {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const response = await fetch('/api/vapidPublicKey');
+        const { publicKey } = await response.json();
+        
+        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey
+        });
+
+        await fetch('/api/subscribe', {
+          method: 'POST',
+          body: JSON.stringify(subscription),
+          headers: { 'content-type': 'application/json' }
+        });
+        console.log('Background Push Subscribed');
+      }
+    } catch(err) {
+      console.error('Failed to subscribe background push:', err);
+    }
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+  return outputArray;
+}

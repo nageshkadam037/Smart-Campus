@@ -2,6 +2,16 @@ import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import webpush from "web-push";
+import fs from "fs";
+
+let vapidKeys: any = null;
+if (fs.existsSync('vapid.json')) {
+  vapidKeys = JSON.parse(fs.readFileSync('vapid.json', 'utf8'));
+  webpush.setVapidDetails('mailto:test@smartcampus.local', vapidKeys.publicKey, vapidKeys.privateKey);
+}
+
+const pushSubscriptions: any[] = [];
 
 async function startServer() {
   const app = express();
@@ -131,6 +141,50 @@ async function startServer() {
     }
     res.json({ success: true });
   });
+
+  app.get('/api/vapidPublicKey', (req, res) => {
+    res.json({ publicKey: vapidKeys.publicKey });
+  });
+
+  app.post('/api/subscribe', (req, res) => {
+    const subscription = req.body;
+    if (!pushSubscriptions.find(s => s.endpoint === subscription.endpoint)) {
+      pushSubscriptions.push(subscription);
+    }
+    res.status(201).json({});
+  });
+
+  // Background job to check schedule every minute
+  setInterval(() => {
+    const now = new Date();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayStr = days[now.getDay()];
+    // For testability, let's just make sure it parses the format correctly
+    const ttDay = db.tt.find((d: any) => d.day === todayStr);
+    
+    if (ttDay && pushSubscriptions.length > 0) {
+      ttDay.slots.forEach(slot => {
+        const parts = slot.t.split('-');
+        if (parts.length > 0) {
+          let startHour = parseInt(parts[0], 10);
+          if (startHour < 6) startHour += 12; // PM conversion
+          const timeUntilStartMins = (startHour * 60) - (now.getHours() * 60 + now.getMinutes());
+          
+          // Notify 10 minutes before class, or right exactly on the hour.
+          // Since the server might not run exactly at '0' seconds, we check within a minute window.
+          if (timeUntilStartMins === 10 || timeUntilStartMins === 0 || timeUntilStartMins === 5) {
+            const payload = JSON.stringify({
+              title: 'Class Reminder 🔔',
+              body: `${slot.s} (${slot.type}) is starting ${timeUntilStartMins === 0 ? 'now' : 'in ' + timeUntilStartMins + ' mins'} at ${slot.l}`
+            });
+            pushSubscriptions.forEach(sub => {
+              webpush.sendNotification(sub, payload).catch(err => console.error("Push Error", err));
+            });
+          }
+        }
+      });
+    }
+  }, 60000);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
