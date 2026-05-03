@@ -10,6 +10,7 @@ const auth = getAuth(app);
 const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 let userRole='student';
+let userDivision='A';
 let collegeCode = '25FC146';
 const pages=['dashboard','schedule','assignments','events','announcements','attendance'];
 
@@ -63,6 +64,7 @@ const googleProvider = new GoogleAuthProvider();
         email: cred.user.email || '',
         phone: cred.user.phoneNumber || '',
         role: userRole, 
+        division: userDivision,
         createdAt: Date.now()
       });
     }
@@ -81,10 +83,20 @@ let students: any[] = [];
 // Fetch initial data from backend
 async function fetchInitialData() {
   try {
-    const docSnap = await getDoc(doc(db, 'system', 'data'));
-    let data;
+    const docSnap = await getDoc(doc(db, 'system', `data_${userDivision}`));
+    let data: any;
     if (docSnap.exists()) {
       data = docSnap.data();
+      if (!data.students || data.students.length < 70) {
+        data.students = Array.from({length: 70}, (_, i) => ({
+          name: ['Aarav','Priya','Rohan','Sneha','Amit','Pooja','Rahul','Anjali','Vivek','Meera','Arjun','Neha','Karan','Kavya','Vikram','Aditi','Varun','Shruti','Yash','Riya'][i % 20] + ' ' + ['Sharma','Mehta','Patil','Kulkarni','Desai','Joshi','Nair','Singh','Reddy','Iyer','Kumar','Gupta','Verma','Tiwari','Mishra','Rao','Das','Nath','Bose','Ghosh'][(i + Math.floor(i/20)) % 20],
+          roll: 'CS' + userDivision + String(i + 1).padStart(3, '0'),
+          pct: Math.floor(Math.random() * 41) + 60
+        }));
+        if (userRole === 'faculty') {
+          await setDoc(doc(db, 'system', `data_${userDivision}`), data);
+        }
+      }
     } else {
       // Default initial data
       data = {
@@ -111,16 +123,14 @@ async function fetchInitialData() {
           {t:'Fee Reminder',b:'Last date for semester fee payment is April 25.',d:'Apr 9',c:'Admin'},
           {t:'Internal Exam Schedule',b:'Internals begin April 28. Timetable on notice board.',d:'Apr 8',c:'Exam'},
         ],
-        students: [
-          {name:'Aarav Sharma',    roll:'CS001',pct:91},{name:'Priya Mehta',     roll:'CS002',pct:85},
-          {name:'Rohan Patil',     roll:'CS003',pct:72},{name:'Sneha Kulkarni',  roll:'CS004',pct:68},
-          {name:'Amit Desai',      roll:'CS005',pct:88},{name:'Pooja Joshi',     roll:'CS006',pct:55},
-          {name:'Rahul Nair',      roll:'CS007',pct:79},{name:'Anjali Singh',    roll:'CS008',pct:93},
-          {name:'Vivek Reddy',     roll:'CS009',pct:61},{name:'Meera Iyer',      roll:'CS010',pct:74},
-        ]
+        students: Array.from({length: 70}, (_, i) => ({
+          name: ['Aarav','Priya','Rohan','Sneha','Amit','Pooja','Rahul','Anjali','Vivek','Meera','Arjun','Neha','Karan','Kavya','Vikram','Aditi','Varun','Shruti','Yash','Riya'][i % 20] + ' ' + ['Sharma','Mehta','Patil','Kulkarni','Desai','Joshi','Nair','Singh','Reddy','Iyer','Kumar','Gupta','Verma','Tiwari','Mishra','Rao','Das','Nath','Bose','Ghosh'][(i + Math.floor(i/20)) % 20],
+          roll: 'CS' + userDivision + String(i + 1).padStart(3, '0'),
+          pct: Math.floor(Math.random() * 41) + 60
+        }))
       };
       if (userRole === 'faculty') {
-        await setDoc(doc(db, 'system', 'data'), data);
+        await setDoc(doc(db, 'system', `data_${userDivision}`), data);
       }
     }
     tt = data.tt || [];
@@ -145,7 +155,7 @@ async function fetchInitialData() {
 async function saveDb() {
   try {
     if (userRole === 'faculty') {
-      await setDoc(doc(db, 'system', 'data'), { tt, assigns, events, anns, students });
+      await setDoc(doc(db, 'system', `data_${userDivision}`), { tt, assigns, events, anns, students });
     }
   } catch (e) {
     console.error('Failed to save to Firestore', e);
@@ -164,7 +174,7 @@ function initPushNotifications() {
   
   notifInterval = setInterval(async () => {
     try {
-      const docSnap = await getDoc(doc(db, 'system', 'data'));
+      const docSnap = await getDoc(doc(db, 'system', `data_${userDivision}`));
       const data = docSnap.exists() ? docSnap.data() : {anns:[], assigns:[], events:[], tt:[], students:[]};
       
       const currAnns = data.anns ? data.anns.length : 0;
@@ -319,7 +329,7 @@ function hideError(id: string) {
       try {
         const cred = await createUserWithEmailAndPassword(auth, email, pass);
         await setDoc(doc(db, 'users', cred.user.uid), {
-          name: email.split('@')[0], email, phone: '', role: userRole, createdAt: Date.now()
+          name: email.split('@')[0], email, phone: '', role: userRole, division: userDivision, createdAt: Date.now()
         });
         return;
       } catch (regErr: any) {
@@ -357,6 +367,7 @@ onAuthStateChanged(auth, async (user) => {
           return;
         }
         userRole = data.role || 'student';
+        userDivision = data.division || 'A';
         
         (window as any).finishAuth(data.name || 'User', data.email || user.email, data.phone || '');
       } else {
@@ -377,10 +388,10 @@ onAuthStateChanged(auth, async (user) => {
   const ini=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
   (document.getElementById('topAvatar') as HTMLElement).textContent=ini;
   (document.getElementById('topName') as HTMLElement).textContent=name;
-  (document.getElementById('topRole') as HTMLElement).textContent=userRole.charAt(0).toUpperCase()+userRole.slice(1);
+  (document.getElementById('topRole') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
   (document.getElementById('bigAvatarTxt') as HTMLElement).textContent=ini;
   (document.getElementById('drawerName') as HTMLElement).textContent=name;
-  (document.getElementById('drawerBadge') as HTMLElement).textContent=userRole.charAt(0).toUpperCase()+userRole.slice(1);
+  (document.getElementById('drawerBadge') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
   (document.getElementById('pf-name') as HTMLInputElement).value=name;
   (document.getElementById('pf-email') as HTMLInputElement).value=email;
   (document.getElementById('pf-phone') as HTMLInputElement).value=phone;
@@ -396,6 +407,7 @@ onAuthStateChanged(auth, async (user) => {
     (document.getElementById('studentAttCard') as HTMLElement).style.display='none';
     (document.getElementById('facEvent') as HTMLElement).style.display='block';
     (document.getElementById('facSchedule') as HTMLElement).style.display='block';
+    (document.getElementById('exportCsvBtn') as HTMLButtonElement).style.display='block';
   } else {
     (document.getElementById('facAssign') as HTMLElement).style.display='none';
     (document.getElementById('studentAssignNote') as HTMLElement).style.display='block';
@@ -407,6 +419,7 @@ onAuthStateChanged(auth, async (user) => {
     (document.getElementById('studentAttCard') as HTMLElement).style.display='block';
     (document.getElementById('facEvent') as HTMLElement).style.display='none';
     (document.getElementById('facSchedule') as HTMLElement).style.display='none';
+    (document.getElementById('exportCsvBtn') as HTMLButtonElement).style.display='none';
     setTimeout(() => {
       const circle = document.getElementById('att-circle');
       if(circle) {
@@ -697,6 +710,54 @@ let pendingAnnFile: File | null=null;
   await saveDb();
 };
 
+(window as any).changeDivision = async function(div: string) {
+  userDivision = div;
+  const user = auth.currentUser;
+  if(user) {
+    await setDoc(doc(db, 'users', user.uid), { division: div }, { merge: true });
+  }
+  (document.getElementById('topRole') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
+  (document.getElementById('drawerBadge') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
+  
+  await fetchInitialData();
+  renderAll();
+};
+
+(window as any).exportAttendanceCSV = function() {
+  if(!students || students.length === 0) return;
+  const header = ['Roll No', 'Student Name', 'Attendance (%)'];
+  const csvRows = [header.join(',')];
+  
+  students.forEach(s => {
+    const row = [
+      `"${s.roll}"`,
+      `"${s.name}"`,
+      s.pct
+    ];
+    csvRows.push(row.join(','));
+  });
+  
+  const csvStr = csvRows.join('\n');
+  const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Attendance_Div_${userDivision}_April_2026.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+(window as any).updateStudent = async function(i: number, field: string, val: string){
+  if(students[i]) {
+    students[i][field] = val;
+    await saveDb();
+    refreshDefaulters();
+  }
+};
+
 function renderAll(){
     renderTT();
     renderAssigns();
@@ -819,20 +880,45 @@ function renderAttendance(){
   const barColor=(p: number)=>p>=75?'#10b981':p>=60?'#f59e0b':'#ef4444';
   const g=document.getElementById('attList');
   if(!g || !students.length) return;
-  g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
-    +students.map((s,i)=>`<tr>
-      <td style="color:var(--muted)">${i+1}</td>
-      <td style="font-weight:500">${s.name}</td>
-      <td style="color:var(--muted)">${s.roll}</td>
-      <td><div class="att-bar-wrap"><div class="att-bar" id="bar-${i}" style="width:${s.pct}%;background:${barColor(s.pct)}"></div></div></td>
-      <td>
-        <input class="att-input" type="number" min="0" max="100" value="${s.pct}" id="att-${i}"
-          onchange="updateAtt(${i},this.value)" oninput="updateAtt(${i},this.value)"
-          style="color:${barColor(s.pct)}">
-      </td>
-    </tr>`).join('')+'</tbody></table>';
+  
+  if (userRole === 'faculty') {
+    g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
+      +students.map((s,i)=>`<tr>
+        <td style="color:var(--muted)">${i+1}</td>
+        <td><input type="text" class="att-input" style="width:100%;text-align:left;" value="${s.name}" onchange="updateStudent(${i}, 'name', this.value)"></td>
+        <td><input type="text" class="att-input" style="width:100%;text-align:left;" value="${s.roll}" onchange="updateStudent(${i}, 'roll', this.value)"></td>
+        <td><div class="att-bar-wrap"><div class="att-bar" id="bar-${i}" style="width:${s.pct}%;background:${barColor(s.pct)}"></div></div></td>
+        <td>
+          <input class="att-input" type="number" min="0" max="100" value="${s.pct}" id="att-${i}"
+            onchange="updateAtt(${i},this.value)" oninput="updateAtt(${i},this.value)"
+            style="color:${barColor(s.pct)}">
+        </td>
+      </tr>`).join('')+'</tbody></table>';
+  } else {
+    g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
+      +students.map((s,i)=>`<tr>
+        <td style="color:var(--muted)">${i+1}</td>
+        <td style="font-weight:500">${s.name}</td>
+        <td style="color:var(--muted)">${s.roll}</td>
+        <td><div class="att-bar-wrap"><div class="att-bar" id="bar-${i}" style="width:${s.pct}%;background:${barColor(s.pct)}"></div></div></td>
+        <td style="font-weight:700;color:${barColor(s.pct)}">${s.pct}%</td>
+      </tr>`).join('')+'</tbody></table>';
+  }
   refreshDefaulters();
 }
+
+(window as any).toggleDefaultersModal = function(){
+  const m = document.getElementById('defaulterModal');
+  if(m) {
+    if(m.style.display === 'flex') {
+      m.style.display = 'none';
+      document.body.style.overflow = '';
+    } else {
+      m.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+  }
+};
 
 function refreshDefaulters(){
   if(!students.length) return;
@@ -841,12 +927,14 @@ function refreshDefaulters(){
   const avg=Math.round(students.reduce((s,x)=>s+x.pct,0)/students.length);
   const dc = document.getElementById('defaulterCount');
   if(dc) dc.textContent=defaulters.length.toString();
+  const tc = document.getElementById('totalStudentsCount');
+  if(tc) tc.textContent=students.length.toString();
   const avgEl=document.querySelector('#attSummaryBar .stat-val[style*="success"]');
   if(avgEl) avgEl.textContent=avg+'%';
   const d=document.getElementById('defaulterList');
   if(!d) return;
   d.innerHTML=defaulters.length===0
-    ?'<div style="color:var(--muted);font-size:13px;padding:10px 0">No defaulters this month.</div>'
+    ?'<div style="color:var(--muted);font-size:13px;padding:10px 0;text-align:center;">No defaulters this month.</div>'
     :defaulters.map(s=>`<div class="defaulter-item">
         <div><div class="def-name">${s.name}</div><div class="def-roll">${s.roll}</div></div>
         <div class="def-pct">${s.pct}%</div>
