@@ -87,15 +87,101 @@ async function fetchInitialData() {
     let data: any;
     if (docSnap.exists()) {
       data = docSnap.data();
+      const divCStudentsData = [
+        { roll: '25FC301', name: 'TUSHAR JAYANT DESAI' },
+        { roll: '25FC302', name: 'MUKHARJEE DIVAKAR SHAMIRON' },
+        { roll: '25FC303', name: 'KALASH SURESH LADDHA' },
+        { roll: '25FC304', name: 'PATIL ASHUTOSH CHETANSINGH' },
+        { roll: '25FC305', name: 'GADHE GAURESH DHANANJAY' },
+        { roll: '25FC306', name: 'SUNIDHI BANGERA' },
+        { roll: '25FC307', name: 'SUJAL NANDLAL CHAUDHARI' },
+        { roll: '25FC308', name: 'PAPADKAR ANISH PRAVIN' },
+        { roll: '25FC309', name: 'SHREE MANOJ WAYADANDE' },
+        { roll: '25FC310', name: 'TEMBHURNE SANDHYA ARUN' },
+        { roll: '25FC311', name: 'WAISE VEDANT ANIL' },
+        { roll: '25FC312', name: 'URWANSH RAGHUWANSHI' },
+        { roll: '25FC313', name: 'OM SHYAM AHIR' },
+        { roll: '25FC314', name: 'RITESH R UBALE' },
+        { roll: '25FC315', name: 'AARYA NARESHKUMAR JAIN' },
+        { roll: '25FC316', name: 'YASH JITENDRA CHAUDHARI' },
+        { roll: '25FC317', name: 'ALOK KUMAR SHUKLA' },
+        { roll: '25FC318', name: 'MRUNALINI PRAKASH PATIL' },
+        { roll: '25FC319', name: 'RASIKA RANGRAO CHAVAN' },
+        { roll: '25FC320', name: 'KOTWAL AKHILESH DINKARRAO' },
+        { roll: '25FC321', name: 'PATIL RONIT RAVINDRA' },
+        { roll: '25FC322', name: 'ISHWARI PRASAD SALJOSHI' },
+        { roll: '25FC323', name: 'SARTHAK RAJU JAGNADE' },
+        { roll: '25FC324', name: 'PURVA NILESH DESAI' },
+        { roll: '25FC325', name: 'PRATHMESH DURGESH SALUNKE' },
+        { roll: '25FC326', name: 'ARNAV PRASHANT SALUNKHE' },
+        { roll: '25FC327', name: 'VISHWASE ADITI SACHIN' },
+        { roll: '25FC328', name: 'RAUT MANJUSHA GOVIND' },
+        { roll: '25FC329', name: 'SAARTH AMOL DALVI' },
+        { roll: '25FC330', name: 'SHRUTIKA BHAND' },
+        { roll: '25FC331', name: 'SUPRATIM LASKAR' },
+        { roll: '25FC332', name: 'SWAYAM VILAS JADHAV' },
+        { roll: '25FC333', name: 'RASHI DATTRAO LAHORKAR' },
+        { roll: '25FC334', name: 'AYUSH GAJANAN INGLE' },
+        { roll: '25FC335', name: 'FAARIAH NADEEM SIDDIQUI' },
+        { roll: '25FC336', name: 'AVANEESH SAMEER YAJURVEDI' },
+        { roll: '25FC337', name: 'CHAVAN SIDDHI JAGANNATH' },
+        { roll: '25FC338', name: 'NEELAM CHOUDHARY' },
+        { roll: '25FC339', name: 'OMKAR CHAVAN' },
+        { roll: '25FC340', name: 'OM RACHKAR' },
+        { roll: '25FC341', name: 'VEDIKA SUDHEER YADAV' },
+        { roll: '25FC342', name: 'SHRUTI RAJ' },
+        { roll: '25FC343', name: 'BHOSALE SUMIT SANJAY' },
+        { roll: '25FC344', name: 'YASH ROHIDAS GHAYAT' },
+        { roll: '25FC345', name: 'SUHAS KAILAS KOLHE' },
+        { roll: '25FC346', name: 'AMBIKA TAPSHALE' },
+        { roll: '25FC347', name: 'OMKAR MAHESH DEOKAR' },
+        { roll: '25FC348', name: 'BHAGVATI DHONDIBA BOBADE' },
+        { roll: '25FC349', name: 'SAMAIRA DEEPAK SABALE' },
+        { roll: '25FC350', name: 'DHRUV DATTATRAY BABAR' },
+        { roll: '25FC351', name: 'JANHVI JAISING PATIL' },
+        { roll: '25FC352', name: 'NAGESH DATTA KADAM' },
+        { roll: '25FC353', name: 'BHOR ADITYA GOVIND' },
+        { roll: '25FC354', name: 'SONAWANE SUMIT' },
+        { roll: '25FC355', name: 'JOSHI KAUSTUBH SATISH' },
+        { roll: '25FC356', name: 'VARAD KAILAS KOTKAR' },
+        { roll: '25FC357', name: 'KHADKE MIHIR VIJAY' },
+        { roll: '25FC358', name: 'MANAS SACHIN DIXIT' },
+        { roll: '25FC359', name: 'ADITYA UDAYSING GURAV' },
+        { roll: '25FC360', name: 'JAYDEEP JITENDRA BHOITE' },
+        { roll: '25FC361', name: 'SOHAM DOIPHODE' },
+        { roll: '25FC362', name: 'PALASH MAHESH CHHATRE' },
+        { roll: '25FC363', name: 'VEDANT VERMA' },
+        { roll: '25FC364', name: 'GAURAV VIJAY PATIL' },
+        { roll: '25FC365', name: 'ARJUN DEEPAK GUJAR' },
+        { roll: '25FC366', name: 'BHULE PRANIT SACHIDANAND' },
+        { roll: '25FC367', name: 'NEHA PRASAD BHITALE' },
+        { roll: '25FC368', name: 'MANNAT KAUR BAGGA' },
+        { roll: '25FC369', name: 'AHIRE VINALI SANJAY' },
+        { roll: '25FC370', name: 'ANUSHKA PRAVIN DESHMUKH' }
+      ];
+
+      // Update names and handle missing entries
+      let needsUpdate = false;
       if (!data.students || data.students.length < 70) {
-        data.students = Array.from({length: 70}, (_, i) => ({
-          name: ['Aarav','Priya','Rohan','Sneha','Amit','Pooja','Rahul','Anjali','Vivek','Meera','Arjun','Neha','Karan','Kavya','Vikram','Aditi','Varun','Shruti','Yash','Riya'][i % 20] + ' ' + ['Sharma','Mehta','Patil','Kulkarni','Desai','Joshi','Nair','Singh','Reddy','Iyer','Kumar','Gupta','Verma','Tiwari','Mishra','Rao','Das','Nath','Bose','Ghosh'][(i + Math.floor(i/20)) % 20],
-          roll: 'CS' + userDivision + String(i + 1).padStart(3, '0'),
+        data.students = divCStudentsData.map((s, i) => ({
+          name: s.name,
+          roll: s.roll,
           pct: Math.floor(Math.random() * 41) + 60
         }));
-        if (userRole === 'faculty') {
-          await setDoc(doc(db, 'system', `data_${userDivision}`), data);
+        needsUpdate = true;
+      } else {
+        // If data loaded but we want to make sure the names are exact Div C ones
+        for (let i = 0; i < 70; i++) {
+          if (data.students[i] && (data.students[i].name !== divCStudentsData[i].name || data.students[i].roll !== divCStudentsData[i].roll)) {
+             data.students[i].name = divCStudentsData[i].name;
+             data.students[i].roll = divCStudentsData[i].roll;
+             needsUpdate = true;
+          }
         }
+      }
+
+      if (needsUpdate && userRole === 'faculty') {
+        await setDoc(doc(db, 'system', `data_${userDivision}`), data);
       }
     } else {
       // Default initial data
@@ -885,8 +971,8 @@ function renderAttendance(){
     g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
       +students.map((s,i)=>`<tr>
         <td style="color:var(--muted)">${i+1}</td>
-        <td><input type="text" class="att-input" style="width:100%;text-align:left;" value="${s.name}" onchange="updateStudent(${i}, 'name', this.value)"></td>
-        <td><input type="text" class="att-input" style="width:100%;text-align:left;" value="${s.roll}" onchange="updateStudent(${i}, 'roll', this.value)"></td>
+        <td><input type="text" class="att-input" style="width:100%;min-width:300px;text-align:left;" value="${s.name}" onchange="updateStudent(${i}, 'name', this.value)"></td>
+        <td><input type="text" class="att-input" style="width:100%;min-width:120px;text-align:left;" value="${s.roll}" onchange="updateStudent(${i}, 'roll', this.value)"></td>
         <td><div class="att-bar-wrap"><div class="att-bar" id="bar-${i}" style="width:${s.pct}%;background:${barColor(s.pct)}"></div></div></td>
         <td>
           <input class="att-input" type="number" min="0" max="100" value="${s.pct}" id="att-${i}"
