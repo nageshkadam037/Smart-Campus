@@ -12,23 +12,44 @@ const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 let userRole='student';
 let userDivision='A';
 let collegeCode = '25FC146';
-const pages=['dashboard','schedule','assignments','events','announcements','attendance'];
+let facultyCode = '25FC01';
+const pages=['dashboard','schedule','assignments','events','attendance'];
 
 async function syncCollegeCode() {
   try {
     const docSnap = await getDoc(doc(db, 'system', 'config'));
-    if (docSnap.exists() && docSnap.data().collegeCode) {
-      collegeCode = docSnap.data().collegeCode;
-    } else {
-      collegeCode = '25FC146';
+    if (docSnap.exists()) {
+      const data = docSnap.data() as any;
+      if (data.collegeCode) collegeCode = data.collegeCode;
+      if (data.facultyCode) facultyCode = data.facultyCode;
     }
+    
+    // Set UI values if elements exist
+    const adm = document.getElementById('adm-code') as HTMLInputElement;
+    const fac = document.getElementById('fac-code') as HTMLInputElement;
+    if (adm) adm.value = collegeCode;
+    if (fac) fac.value = facultyCode;
   } catch(e) {
     console.warn('Config fetch failed, using default.');
-    collegeCode = '25FC146';
   }
 }
 
 const googleProvider = new GoogleAuthProvider();
+
+async function findStudentByRoll(roll: string) {
+  const possibleDivisions = ['A', 'B', 'C', 'D'];
+  for (const div of possibleDivisions) {
+    const divSnap = await getDoc(doc(db, 'system', `data_${div}`));
+    if (divSnap.exists()) {
+      const divData = divSnap.data();
+      if (divData.students) {
+        const stu = divData.students.find((s: any) => s.roll === roll);
+        if (stu) return { student: stu, division: div };
+      }
+    }
+  }
+  return null;
+}
 
 (window as any).doGoogleLogin = async function() {
   hideError('l-err');
@@ -36,21 +57,26 @@ const googleProvider = new GoogleAuthProvider();
   const codeVal = (document.getElementById('l-code') as HTMLInputElement)?.value;
 
   if (!codeVal) {
-    showError('l-err', 'Please enter the College Access Code before continuing with Google.');
+    showError('l-err', 'Please enter your Access Code/Roll No before continuing with Google.');
     return;
   }
 
+  await syncCollegeCode();
+
+  let studentName = null;
+
   if (userRole === 'faculty') {
-    if (codeVal !== '25FC01') {
-      showError('l-err', 'Invalid College Access Code for Faculty.');
-      return;
+    if (codeVal !== facultyCode) {
+      return showError('l-err', 'Invalid College Access Code for Faculty.');
     }
   } else {
-    await syncCollegeCode();
-    if (codeVal !== collegeCode) {
-      showError('l-err', 'Invalid College Access Code.');
-      return;
+    // Student
+    const result = await findStudentByRoll(codeVal);
+    if (!result) {
+      return showError('l-err', 'Invalid Roll Number or Student not found in database.');
     }
+    userDivision = result.division;
+    studentName = result.student.name;
   }
 
   try {
@@ -60,13 +86,28 @@ const googleProvider = new GoogleAuthProvider();
     if (!docSnap.exists()) {
       // First time Google login, create profile
       await setDoc(doc(db, 'users', cred.user.uid), {
-        name: cred.user.displayName || 'User',
+        name: studentName || cred.user.displayName || 'User',
         email: cred.user.email || '',
         phone: cred.user.phoneNumber || '',
         role: userRole, 
         division: userDivision,
+        roll: userRole === 'student' ? codeVal : '',
         createdAt: Date.now()
       });
+    } else {
+      // User exists, update role, division, roll and potentially name if it was a student
+      const updateData: any = {
+        role: userRole,
+        division: userDivision,
+      };
+      if (userRole === 'student') {
+        updateData.roll = codeVal;
+        if (studentName) updateData.name = studentName;
+      }
+      await setDoc(doc(db, 'users', cred.user.uid), updateData, { merge: true });
+      if (userRole === 'student' && studentName) {
+         (window as any).finishAuth(studentName, cred.user.email || '', cred.user.phoneNumber || '', codeVal);
+      }
     }
   } catch(e: any) {
     console.error(e);
@@ -77,7 +118,6 @@ const googleProvider = new GoogleAuthProvider();
 let tt: any[] = [];
 let assigns: any[] = [];
 let events: any[] = [];
-let anns: any[] = [];
 let students: any[] = [];
 
 // Fetch initial data from backend
@@ -204,11 +244,6 @@ async function fetchInitialData() {
           {day:'18',mon:'Apr',t:'Project Exhibition',l:'Block C, Lab',c:'Academic'},
           {day:'22',mon:'Apr',t:'Sports Day',l:'Sports Complex',c:'Sports'},
         ],
-        anns: [
-          {t:'Holiday - Apr 14',b:'Campus remains closed for Dr. Ambedkar Jayanti.',d:'Apr 10',c:'Holiday'},
-          {t:'Fee Reminder',b:'Last date for semester fee payment is April 25.',d:'Apr 9',c:'Admin'},
-          {t:'Internal Exam Schedule',b:'Internals begin April 28. Timetable on notice board.',d:'Apr 8',c:'Exam'},
-        ],
         students: Array.from({length: 70}, (_, i) => ({
           name: ['Aarav','Priya','Rohan','Sneha','Amit','Pooja','Rahul','Anjali','Vivek','Meera','Arjun','Neha','Karan','Kavya','Vikram','Aditi','Varun','Shruti','Yash','Riya'][i % 20] + ' ' + ['Sharma','Mehta','Patil','Kulkarni','Desai','Joshi','Nair','Singh','Reddy','Iyer','Kumar','Gupta','Verma','Tiwari','Mishra','Rao','Das','Nath','Bose','Ghosh'][(i + Math.floor(i/20)) % 20],
           roll: 'CS' + userDivision + String(i + 1).padStart(3, '0'),
@@ -222,16 +257,12 @@ async function fetchInitialData() {
     tt = data.tt || [];
     assigns = data.assigns || [];
     events = data.events || [];
-    anns = data.anns || [];
     students = data.students || [];
     
     // If we're already on the app page, re-render
     if (document.getElementById('app')?.classList.contains('active')) {
       renderAll();
     }
-    // Update counts for notifications
-    if (typeof (window as any).lastAnnsCount === 'undefined') (window as any).lastAnnsCount = anns.length;
-    if (typeof (window as any).lastAssignsCount === 'undefined') (window as any).lastAssignsCount = assigns.length;
     
   } catch (error) {
     console.error('Failed to fetch data', error);
@@ -241,113 +272,14 @@ async function fetchInitialData() {
 async function saveDb() {
   try {
     if (userRole === 'faculty') {
-      await setDoc(doc(db, 'system', `data_${userDivision}`), { tt, assigns, events, anns, students });
+      await setDoc(doc(db, 'system', `data_${userDivision}`), { tt, assigns, events, students });
     }
   } catch (e) {
     console.error('Failed to save to Firestore', e);
   }
 }
 
-let notifInterval: any;
-let notifiedSlots: {[key:string]: boolean} = {};
 
-function initPushNotifications() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-  
-  if(notifInterval) clearInterval(notifInterval);
-  
-  notifInterval = setInterval(async () => {
-    try {
-      const docSnap = await getDoc(doc(db, 'system', `data_${userDivision}`));
-      const data = docSnap.exists() ? docSnap.data() : {anns:[], assigns:[], events:[], tt:[], students:[]};
-      
-      const currAnns = data.anns ? data.anns.length : 0;
-      const currAssigns = data.assigns ? data.assigns.length : 0;
-      
-      const currEvents = data.events ? data.events.length : 0;
-      
-      const lastAnns = (window as any).lastAnnsCount ?? currAnns;
-      const lastAssigns = (window as any).lastAssignsCount ?? currAssigns;
-      const lastEvents = (window as any).lastEventsCount ?? currEvents;
-      
-      const hasPerms = Notification.permission === 'granted';
-
-      if (currAnns !== lastAnns) {
-        if (hasPerms && currAnns > lastAnns && lastAnns > 0) {
-          new Notification('Important Notification', { body: data.anns[0]?.t || 'New update posted' });
-        }
-      }
-      
-      if (currAssigns !== lastAssigns) {
-        if (hasPerms && currAssigns > lastAssigns && lastAssigns > 0) {
-          const newAsg = data.assigns[data.assigns.length - 1];
-          new Notification('New Assignment', { body: `${newAsg?.t} due ${newAsg?.d||'soon'}` });
-        }
-      }
-      
-      const currentDataStr = JSON.stringify({tt:data.tt, a:data.assigns, e:data.events, n:data.anns});
-      if ((window as any).lastDataStr && (window as any).lastDataStr !== currentDataStr) {
-        tt = data.tt || [];
-        assigns = data.assigns || [];
-        events = data.events || [];
-        anns = data.anns || [];
-        students = data.students || [];
-        if (document.getElementById('app')?.classList.contains('active')) {
-          renderAll();
-        }
-      }
-      (window as any).lastDataStr = currentDataStr;
-      
-      (window as any).lastAnnsCount = currAnns;
-      (window as any).lastAssignsCount = currAssigns;
-      (window as any).lastEventsCount = currEvents;
-      
-      // Schedule check
-      const now = new Date();
-      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      const todayStr = days[now.getDay()];
-      const todaySchedule = data.tt?.find((d:any) => d.day === todayStr);
-      
-      if (todaySchedule && todaySchedule.slots) {
-        todaySchedule.slots.forEach((slot:any) => {
-          let startHour = -1, startMin = 0;
-          if(slot.t.includes('-')) {
-              let s = slot.t.split('-')[0].trim();
-              if(s.includes(':')) {
-                  startHour = parseInt(s.split(':')[0]);
-                  startMin = parseInt(s.split(':')[1]);
-              } else {
-                  startHour = parseInt(s);
-              }
-              if(startHour < 8) startHour += 12; // convert to PM
-          } else if (slot.t.includes(':')) {
-              startHour = parseInt(slot.t.split(':')[0]);
-              startMin = parseInt(slot.t.split(':')[1]);
-              if(startHour < 8) startHour += 12;
-          }
-          
-          if(startHour >= 0) {
-              const classTime = new Date();
-              classTime.setHours(startHour, startMin, 0, 0);
-              const diffMins = (classTime.getTime() - now.getTime()) / 60000;
-              
-              if(diffMins >= 0 && diffMins <= 5) {
-                  const slotId = todayStr + slot.t + slot.s;
-                  if(!notifiedSlots[slotId]) {
-                      if (hasPerms) new Notification('Upcoming Class', { body: `${slot.s} starts at ${slot.t} in ${slot.l}` });
-                      notifiedSlots[slotId] = true;
-                  }
-              }
-          }
-        });
-      }
-    } catch(e) {
-      console.error('Notification check failed', e);
-    }
-  }, 10000); // Check every 10s
-}
 
 // Global functions need to be on window for inline handlers
 (window as any).go = function(id: string){
@@ -360,6 +292,22 @@ function initPushNotifications() {
   document.querySelectorAll('.rtab').forEach(el=>el.classList.remove('on'));
   document.querySelectorAll('#rt-'+r+'-reg').forEach(el=>el.classList.add('on'));
   document.querySelectorAll('#rt-'+r+'-log').forEach(el=>el.classList.add('on'));
+  
+  const codeInput = document.getElementById('l-code') as HTMLInputElement;
+  const pwToggle = document.querySelector('.pw-toggle') as HTMLElement;
+  if(codeInput) {
+    if (r === 'student') {
+      codeInput.placeholder = "Enter Roll Number (e.g. 25FC301)";
+      codeInput.type = "text";
+      if(pwToggle) pwToggle.style.display = 'none';
+      codeInput.style.paddingRight = "16px";
+    } else if (r === 'faculty') {
+      codeInput.placeholder = "Faculty Access Code";
+      codeInput.type = "password";
+      if(pwToggle) pwToggle.style.display = 'block';
+      codeInput.style.paddingRight = "48px";
+    }
+  }
 };
 
 (window as any).togglePw = function(inputId: string, iconId: string) {
@@ -385,20 +333,28 @@ function hideError(id: string) {
 }
 
 (window as any).doLogin = async function(){
-  const email=(document.getElementById('l-email') as HTMLInputElement).value;
-  const code=(document.getElementById('l-code') as HTMLInputElement).value;
+  const emailInp = document.getElementById('l-email') as HTMLInputElement;
+  const codeInp = document.getElementById('l-code') as HTMLInputElement;
+  const email = emailInp ? emailInp.value : '';
+  const code = codeInp ? codeInp.value : '';
   
   if(!email || !code) return showError('l-err', 'Please fill email and college code');
   
+  await syncCollegeCode();
+
+  let studentName = email.split('@')[0];
+
   if (userRole === 'faculty') {
-    if (code !== '25FC01') {
+    if (code !== facultyCode) {
       return showError('l-err', 'Invalid College Access Code for Faculty.');
     }
   } else {
-    await syncCollegeCode();
-    if (code !== collegeCode) {
-      return showError('l-err', 'Invalid College Access Code.');
+    const result = await findStudentByRoll(code);
+    if (!result) {
+      return showError('l-err', 'Invalid Roll Number or Student not found in database.');
     }
+    userDivision = result.division;
+    studentName = result.student.name;
   }
 
   const pass = email.toLowerCase() + "Campus#123!";
@@ -409,13 +365,27 @@ function hideError(id: string) {
   btn.disabled = true; btn.textContent = 'Logging in...';
 
   try {
-    await signInWithEmailAndPassword(auth, email, pass);
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    const updateData: any = {
+      role: userRole,
+      division: userDivision,
+    };
+    if (userRole === 'student') {
+      updateData.roll = code;
+      if (studentName) updateData.name = studentName;
+    }
+    await setDoc(doc(db, 'users', cred.user.uid), updateData, { merge: true });
+    if (userRole === 'student' && studentName) {
+       (window as any).finishAuth(studentName, email, '', code);
+    }
   } catch(e: any) {
     if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
       try {
         const cred = await createUserWithEmailAndPassword(auth, email, pass);
         await setDoc(doc(db, 'users', cred.user.uid), {
-          name: email.split('@')[0], email, phone: '', role: userRole, division: userDivision, createdAt: Date.now()
+          name: studentName, email, phone: '', role: userRole, division: userDivision, 
+          roll: userRole === 'student' ? code : '',
+          createdAt: Date.now()
         });
         return;
       } catch (regErr: any) {
@@ -455,14 +425,21 @@ onAuthStateChanged(auth, async (user) => {
         userRole = data.role || 'student';
         userDivision = data.division || 'A';
         
-        (window as any).finishAuth(data.name || 'User', data.email || user.email, data.phone || '');
+        if (userRole === 'student' && !data.roll) {
+          await signOut(auth);
+          (window as any).go('login');
+          showError('l-err', 'Please log in again and enter your Roll No to link your student profile.');
+          return;
+        }
+
+        (window as any).finishAuth(data.name || 'User', data.email || user.email, data.phone || '', data.roll || '');
       } else {
         // Fallback if no profile doc
-        (window as any).finishAuth('User', user.email, '');
+        (window as any).finishAuth('User', user.email, '', '');
       }
     } catch(e) {
       console.error(e);
-      (window as any).finishAuth('User', user.email, '');
+      (window as any).finishAuth('User', user.email, '', '');
     }
   } else {
     // User is logged out
@@ -470,59 +447,102 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-(window as any).finishAuth = function(name: string, email: string, phone: string){
+(window as any).finishAuth = function(name: string, email: string, phone: string, roll: string){
   const ini=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-  (document.getElementById('topAvatar') as HTMLElement).textContent=ini;
-  (document.getElementById('topName') as HTMLElement).textContent=name;
-  (document.getElementById('topRole') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
-  (document.getElementById('bigAvatarTxt') as HTMLElement).textContent=ini;
-  (document.getElementById('drawerName') as HTMLElement).textContent=name;
-  (document.getElementById('drawerBadge') as HTMLElement).textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
-  (document.getElementById('pf-name') as HTMLInputElement).value=name;
-  (document.getElementById('pf-email') as HTMLInputElement).value=email;
-  (document.getElementById('pf-phone') as HTMLInputElement).value=phone;
+  const topAv = document.getElementById('topAvatar');
+  if (topAv) topAv.textContent=ini;
+  const topNm = document.getElementById('topName');
+  if (topNm) topNm.textContent=name;
+  const topRl = document.getElementById('topRole');
+  if (topRl) topRl.textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
+  
+  const bigAvT = document.getElementById('bigAvatarTxt');
+  if (bigAvT) bigAvT.textContent=ini;
+  const drNm = document.getElementById('drawerName');
+  if (drNm) drNm.textContent=name;
+  const drBd = document.getElementById('drawerBadge');
+  if (drBd) drBd.textContent=(userRole.charAt(0).toUpperCase()+userRole.slice(1)) + ' (Div ' + userDivision + ')';
 
-  if(userRole==='admin' || userRole==='faculty'){
-    (document.getElementById('facAnn') as HTMLElement).style.display='block';
-    (document.getElementById('facAssign') as HTMLElement).style.display='block';
-    (document.getElementById('studentAssignNote') as HTMLElement).style.display='none';
-    (document.getElementById('pf-id-label') as HTMLElement).textContent='Faculty ID';
-    (document.getElementById('pf-id') as HTMLInputElement).value='FAC2024-0042';
-    (document.getElementById('sn-attendance') as HTMLElement).style.display='flex';
-    (document.getElementById('bn-attendance') as HTMLElement).style.display='flex';
-    (document.getElementById('studentAttCard') as HTMLElement).style.display='none';
-    (document.getElementById('facEvent') as HTMLElement).style.display='block';
-    (document.getElementById('facSchedule') as HTMLElement).style.display='block';
-    (document.getElementById('exportCsvBtn') as HTMLButtonElement).style.display='block';
+  const pfN = document.getElementById('pf-name') as HTMLInputElement;
+  if (pfN) pfN.value=name;
+  const pfE = document.getElementById('pf-email') as HTMLInputElement;
+  if (pfE) pfE.value=email;
+  const pfP = document.getElementById('pf-phone') as HTMLInputElement;
+  if (pfP) pfP.value=phone;
+
+  const pfName = document.getElementById('pf-name') as HTMLInputElement;
+  const nameNote = document.getElementById('student-name-note') as HTMLElement;
+
+  if(userRole==='faculty'){
+    pfName.readOnly = false;
+    if(nameNote) nameNote.style.display = 'none';
+    const facAnn = document.getElementById('facAnn');
+    if (facAnn) facAnn.style.display='block';
+    const facAssign = document.getElementById('facAssign');
+    if (facAssign) facAssign.style.display='block';
+    const stAsNote = document.getElementById('studentAssignNote');
+    if (stAsNote) stAsNote.style.display='none';
+    const pfLabel = document.getElementById('pf-id-label');
+    if (pfLabel) pfLabel.textContent='Faculty ID';
+    const pfId = document.getElementById('pf-id') as HTMLInputElement;
+    if (pfId) pfId.value= roll || 'FAC-01';
+    const snAtt = document.getElementById('sn-attendance');
+    if (snAtt) snAtt.style.display='flex';
+    const bnAtt = document.getElementById('bn-attendance');
+    if (bnAtt) bnAtt.style.display='flex';
+    const stAttCard = document.getElementById('studentAttCard');
+    if (stAttCard) stAttCard.style.display='none';
+    const facEv = document.getElementById('facEvent');
+    if (facEv) facEv.style.display='block';
+    const facSch = document.getElementById('facSchedule');
+    if (facSch) facSch.style.display='block';
+    const expBtn = document.getElementById('exportCsvBtn') as HTMLButtonElement;
+    if (expBtn) expBtn.style.display='block';
   } else {
-    (document.getElementById('facAssign') as HTMLElement).style.display='none';
-    (document.getElementById('studentAssignNote') as HTMLElement).style.display='block';
-    (document.getElementById('facAnn') as HTMLElement).style.display='none';
-    (document.getElementById('pf-id-label') as HTMLElement).textContent='Student ID';
-    (document.getElementById('pf-id') as HTMLInputElement).value='SC2024-0187';
-    (document.getElementById('sn-attendance') as HTMLElement).style.display='none';
-    (document.getElementById('bn-attendance') as HTMLElement).style.display='none';
-    (document.getElementById('studentAttCard') as HTMLElement).style.display='block';
-    (document.getElementById('facEvent') as HTMLElement).style.display='none';
-    (document.getElementById('facSchedule') as HTMLElement).style.display='none';
-    (document.getElementById('exportCsvBtn') as HTMLButtonElement).style.display='none';
-    setTimeout(() => {
+    pfName.readOnly = true;
+    if(nameNote) nameNote.style.display = 'block';
+    const facAssign = document.getElementById('facAssign');
+    if (facAssign) facAssign.style.display='none';
+    const stAsNote = document.getElementById('studentAssignNote');
+    if (stAsNote) stAsNote.style.display='block';
+    const facAnn = document.getElementById('facAnn');
+    if (facAnn) facAnn.style.display='none';
+    const pfLabel = document.getElementById('pf-id-label');
+    if (pfLabel) pfLabel.textContent='Student ID (Roll No)';
+    const pfId = document.getElementById('pf-id') as HTMLInputElement;
+    if (pfId) pfId.value= roll || 'N/A';
+    const snAtt = document.getElementById('sn-attendance');
+    if (snAtt) snAtt.style.display='none';
+    const bnAtt = document.getElementById('bn-attendance');
+    if (bnAtt) bnAtt.style.display='none';
+    const stAttCard = document.getElementById('studentAttCard');
+    if (stAttCard) stAttCard.style.display='block';
+    const facEv = document.getElementById('facEvent');
+    if (facEv) facEv.style.display='none';
+    const facSch = document.getElementById('facSchedule');
+    if (facSch) facSch.style.display='none';
+    const expBtn = document.getElementById('exportCsvBtn') as HTMLButtonElement;
+    if (expBtn) expBtn.style.display='none';
+  }
+  
+  setTimeout(() => {
       const circle = document.getElementById('att-circle');
       if(circle) {
         circle.style.strokeDashoffset = '13'; // 100 - 87
       }
     }, 100);
-  }
+
   (window as any).go('app'); 
   fetchInitialData().then(() => renderAll());
-  initPushNotifications();
 };
 
 (window as any).doLogout = async function(){
   await signOut(auth);
   (window as any).setRole('student');
 };
-(window as any).openDrawer = function(){document.getElementById('drawer-overlay')?.classList.add('open');};
+(window as any).openDrawer = function(){
+  document.getElementById('drawer-overlay')?.classList.add('open');
+};
 (window as any).closeDrawer = function(e: any){if(e.target===document.getElementById('drawer-overlay'))(window as any).closeDrawerDirect();};
 (window as any).closeDrawerDirect = function(){document.getElementById('drawer-overlay')?.classList.remove('open');};
 
@@ -606,25 +626,81 @@ let cropperInst: Cropper | null = null;
   if(canvas) {
     const dataUrl = canvas.toDataURL('image/png');
     const i = document.getElementById('bigAvatarImg') as HTMLImageElement;
-    i.src = dataUrl;
-    i.style.display = 'block';
-    (document.getElementById('bigAvatarTxt') as HTMLElement).style.display = 'none';
+    if (i) {
+      i.src = dataUrl;
+      i.style.display = 'block';
+    }
+    const txt = document.getElementById('bigAvatarTxt');
+    if (txt) txt.style.display = 'none';
     
     // Also update top avatar to cropped image
     const topAvatar = document.getElementById('topAvatar') as HTMLElement;
-    topAvatar.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
+    if (topAvatar) topAvatar.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
   }
   (window as any).cancelCrop();
 };
 
-(window as any).saveProfile = function(){
-  const name=(document.getElementById('pf-name') as HTMLInputElement).value||'User';
+(window as any).saveProfile = async function(){
+  const m=document.getElementById('savedMsg') as HTMLElement;
+  if (!m) return;
+  m.textContent='Saving...';
+  
+  const pfNameEl = document.getElementById('pf-name') as HTMLInputElement;
+  const pfPhoneEl = document.getElementById('pf-phone') as HTMLInputElement;
+  const pfIdEl = document.getElementById('pf-id') as HTMLInputElement;
+  const pfEmailEl = document.getElementById('pf-email') as HTMLInputElement;
+
+  let name = pfNameEl ? pfNameEl.value || 'User' : 'User';
+  const phone = pfPhoneEl ? pfPhoneEl.value || '' : '';
+  const rollNo = pfIdEl ? pfIdEl.value || '' : '';
+  
+  const updateData: any = { phone };
+
+  if (userRole === 'student' && rollNo && rollNo !== 'N/A') {
+    const result = await findStudentByRoll(rollNo);
+    if (result) {
+      name = result.student.name;
+      updateData.name = name;
+      updateData.roll = rollNo;
+      updateData.division = result.division;
+      userDivision = result.division;
+      if (pfNameEl) pfNameEl.value = name;
+      (window as any).finishAuth(name, pfEmailEl ? pfEmailEl.value : '', phone, rollNo);
+    } else {
+      m.textContent = 'Error: Invalid Roll Number';
+      m.style.color = 'var(--danger)';
+      setTimeout(()=> { m.textContent=''; m.style.color=''; }, 3000);
+      return;
+    }
+  } else {
+    updateData.name = name;
+  }
+
   const ini=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-  (document.getElementById('topAvatar') as HTMLElement).textContent=ini;
-  (document.getElementById('topName') as HTMLElement).textContent=name;
-  (document.getElementById('drawerName') as HTMLElement).textContent=name;
-  if((document.getElementById('bigAvatarImg') as HTMLElement).style.display==='none') (document.getElementById('bigAvatarTxt') as HTMLElement).textContent=ini;
-  const m=document.getElementById('savedMsg') as HTMLElement; m.textContent='Profile saved!'; setTimeout(()=>m.textContent='',2500);
+  const topAv = document.getElementById('topAvatar');
+  if (topAv) topAv.textContent=ini;
+  const topNm = document.getElementById('topName');
+  if (topNm) topNm.textContent=name;
+  const drNm = document.getElementById('drawerName');
+  if (drNm) drNm.textContent=name;
+  
+  const bigAvImg = document.getElementById('bigAvatarImg');
+  const bigAvTxt = document.getElementById('bigAvatarTxt');
+  if(bigAvImg && bigAvImg.style.display==='none' && bigAvTxt) bigAvTxt.textContent=ini;
+  
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'users', auth.currentUser.uid), updateData, { merge: true });
+      m.style.color = 'var(--success)';
+      m.textContent='Profile saved!'; 
+    } catch(e: any) {
+      console.error("Save profile error", e);
+      m.style.color = 'var(--danger)';
+      m.textContent = 'Save Error: ' + e.message;
+    }
+  }
+
+  setTimeout(()=> { m.textContent=''; m.style.color=''; }, 3000);
 };
 
 (window as any).showPage = function(p: string){
@@ -663,15 +739,21 @@ let pendingFile: File | null = null;
   if(!f) return;
   pendingFile=f;
   const lbl=document.getElementById('fileLabel');
+  const lblTxt = document.getElementById('fileLabelTxt');
   if(lbl) {
-      (document.getElementById('fileLabelTxt') as HTMLElement).textContent=f.name;
+      if (lblTxt) lblTxt.textContent=f.name;
       lbl.classList.add('has-file');
   }
 };
 
 (window as any).addAssign = async function(){
-  const v=(document.getElementById('newA') as HTMLInputElement).value;
-  const d=(document.getElementById('newD') as HTMLInputElement).value;
+  const newAInp = document.getElementById('newA') as HTMLInputElement;
+  const newDInp = document.getElementById('newD') as HTMLInputElement;
+  const newFInp = document.getElementById('newFile') as HTMLInputElement;
+  const lblTxt = document.getElementById('fileLabelTxt');
+
+  const v = newAInp ? newAInp.value : '';
+  const d = newDInp ? newDInp.value : '';
   if(!v) return;
   const entry: any={t:v,d:d||'TBD',u:false,done:false,file:null};
   if(pendingFile){
@@ -679,10 +761,10 @@ let pendingFile: File | null = null;
     entry.file={name:pendingFile.name,url:url};
   }
   assigns.push(entry);
-  (document.getElementById('newA') as HTMLInputElement).value='';
-  (document.getElementById('newD') as HTMLInputElement).value='';
-  (document.getElementById('newFile') as HTMLInputElement).value='';
-  (document.getElementById('fileLabelTxt') as HTMLElement).textContent='Attach document (PDF, DOCX, PPT...)';
+  if (newAInp) newAInp.value='';
+  if (newDInp) newDInp.value='';
+  if (newFInp) newFInp.value='';
+  if (lblTxt) lblTxt.textContent='Attach document (PDF, DOCX, PPT...)';
   document.getElementById('fileLabel')?.classList.remove('has-file');
   pendingFile=null;
   renderAssigns();
@@ -693,30 +775,40 @@ let pendingEvFile: File | null=null;
 (window as any).handleEvFile = function(ev: any){
   const f=ev.target.files[0]; if(!f) return;
   pendingEvFile=f;
-  (document.getElementById('evFileLabelTxt') as HTMLElement).textContent=f.name;
-  document.getElementById('evFileLabel')?.classList.add('has-file');
+  const lblTxt = document.getElementById('evFileLabelTxt');
+  if (lblTxt) lblTxt.textContent=f.name;
+  const lbl = document.getElementById('evFileLabel');
+  if (lbl) lbl.classList.add('has-file');
 };
 
 (window as any).addEvent = async function(){
   if(userRole!=='faculty') return;
-  const t=(document.getElementById('evTitle') as HTMLInputElement).value;
+  const titleInp = document.getElementById('evTitle') as HTMLInputElement;
+  const dayInp = document.getElementById('evDay') as HTMLInputElement;
+  const monInp = document.getElementById('evMon') as HTMLInputElement;
+  const locInp = document.getElementById('evLoc') as HTMLInputElement;
+  const catInp = document.getElementById('evCat') as HTMLInputElement;
+  const fileInp = document.getElementById('evFile') as HTMLInputElement;
+  const lblTxt = document.getElementById('evFileLabelTxt');
+
+  const t = titleInp ? titleInp.value : '';
   if(!t) return;
   const entry: any={
     t:t,
-    day:(document.getElementById('evDay') as HTMLInputElement).value||'?',
-    mon:(document.getElementById('evMon') as HTMLInputElement).value||'Apr',
-    l:(document.getElementById('evLoc') as HTMLInputElement).value||'Campus',
-    c:(document.getElementById('evCat') as HTMLInputElement).value,
+    day: (dayInp ? dayInp.value : '') || '?',
+    mon: (monInp ? monInp.value : '') || 'Apr',
+    l: (locInp ? locInp.value : '') || 'Campus',
+    c: (catInp ? catInp.value : ''),
     file:null
   };
   if(pendingEvFile) entry.file={name:pendingEvFile.name,url:URL.createObjectURL(pendingEvFile)};
   events.push(entry);
-  (document.getElementById('evTitle') as HTMLInputElement).value='';
-  (document.getElementById('evDay') as HTMLInputElement).value='';
-  (document.getElementById('evMon') as HTMLInputElement).value='';
-  (document.getElementById('evLoc') as HTMLInputElement).value='';
-  (document.getElementById('evFile') as HTMLInputElement).value='';
-  (document.getElementById('evFileLabelTxt') as HTMLElement).textContent='Attach document (optional)';
+  if (titleInp) titleInp.value='';
+  if (dayInp) dayInp.value='';
+  if (monInp) monInp.value='';
+  if (locInp) locInp.value='';
+  if (fileInp) fileInp.value='';
+  if (lblTxt) lblTxt.textContent='Attach document (optional)';
   document.getElementById('evFileLabel')?.classList.remove('has-file');
   pendingEvFile=null;
   renderEvents();
@@ -727,58 +819,52 @@ let pendingAnnFile: File | null=null;
 (window as any).handleAnnFile = function(e: any){
   const f=e.target.files[0]; if(!f) return;
   pendingAnnFile=f;
+  const lblTxt = document.getElementById('annFileLabelTxt');
+  if (lblTxt) lblTxt.textContent=f.name;
   const lbl=document.getElementById('annFileLabel');
-  (document.getElementById('annFileLabelTxt') as HTMLElement).textContent=f.name;
-  lbl?.classList.add('has-file');
+  if (lbl) lbl.classList.add('has-file');
 };
 
-(window as any).addAnn = async function(){
-  if(userRole!=='faculty') return;
-  const t=(document.getElementById('annT') as HTMLInputElement).value;
-  const b=(document.getElementById('annB') as HTMLInputElement).value;
-  if(!t) return;
-  const entry: any={t:t,b:b||'',d:'Today',c:'Urgent',file:null};
-  if(pendingAnnFile){
-    entry.file={name:pendingAnnFile.name,url:URL.createObjectURL(pendingAnnFile)};
-  }
-  anns.unshift(entry);
-  (document.getElementById('annT') as HTMLInputElement).value='';
-  (document.getElementById('annB') as HTMLInputElement).value='';
-  (document.getElementById('annFile') as HTMLInputElement).value='';
-  (document.getElementById('annFileLabelTxt') as HTMLElement).textContent='Attach document (optional)';
-  document.getElementById('annFileLabel')?.classList.remove('has-file');
-  pendingAnnFile=null;
-  renderAnns();
-  await saveDb();
-};
+(window as any).addAnn = async function(){};
 
 (window as any).addSlot = async function(){
   if(userRole!=='faculty') return;
-  const day=(document.getElementById('sch-day') as HTMLInputElement).value;
-  const time=(document.getElementById('sch-time') as HTMLInputElement).value.trim();
-  const sub=(document.getElementById('sch-sub') as HTMLInputElement).value.trim();
-  const loc=(document.getElementById('sch-loc') as HTMLInputElement).value.trim();
-  const type=(document.getElementById('sch-type') as HTMLInputElement).value;
-  if(!sub||!time) return;
+  const dayEle = document.getElementById('sch-day') as HTMLInputElement;
+  const timeEle = document.getElementById('sch-time') as HTMLInputElement;
+  const subEle = document.getElementById('sch-sub') as HTMLInputElement;
+  const locEle = document.getElementById('sch-loc') as HTMLInputElement;
+  const typeEle = document.getElementById('sch-type') as HTMLInputElement;
+
+  const day = dayEle ? dayEle.value : '';
+  const time = timeEle ? timeEle.value.trim() : '';
+  const sub = subEle ? subEle.value.trim() : '';
+  const loc = locEle ? locEle.value.trim() : '';
+  const type = typeEle ? typeEle.value : '';
+
+  if(!sub || !time) return;
   const dayObj=tt.find(d=>d.day===day);
-  const newSlot = {t:time,s:sub,l:loc||'TBA',type:type};
+  const newSlot = {t:time, s:sub, l:loc||'TBA', type:type};
   if(dayObj) dayObj.slots.push(newSlot);
   
-  (document.getElementById('sch-time') as HTMLInputElement).value='';
-  (document.getElementById('sch-sub') as HTMLInputElement).value='';
-  (document.getElementById('sch-loc') as HTMLInputElement).value='';
+  if (timeEle) timeEle.value='';
+  if (subEle) subEle.value='';
+  if (locEle) locEle.value='';
   renderTT();
   await saveDb();
 };
 
 (window as any).deleteSlot = async function(){
   if(userRole!=='faculty') return;
-  const day=(document.getElementById('del-day') as HTMLInputElement).value;
-  const idx=parseInt((document.getElementById('del-idx') as HTMLInputElement).value)-1;
+  const dayEle = document.getElementById('del-day') as HTMLInputElement;
+  const idxEle = document.getElementById('del-idx') as HTMLInputElement;
+
+  const day = dayEle ? dayEle.value : '';
+  const idxVal = idxEle ? idxEle.value : '';
+  const idx = parseInt(idxVal)-1;
   const dayObj=tt.find(d=>d.day===day);
-  if(dayObj&&idx>=0&&idx<dayObj.slots.length){
+  if(dayObj && idx>=0 && idx<dayObj.slots.length){
     dayObj.slots.splice(idx,1);
-    (document.getElementById('del-idx') as HTMLInputElement).value='';
+    if (idxEle) idxEle.value='';
     renderTT();
     await saveDb();
   }
@@ -857,29 +943,46 @@ function renderDashDeadlines() {
     const parent = document.getElementById('dash-deadlines');
     if (!parent || !assigns.length) return;
     
-    // Just render first 2 deadlines
+    // Just render first 2-3 deadlines
     let html = '';
-    for(let i=0; i<Math.min(2, assigns.length); i++) {
+    let count = 0;
+    for(let i=0; i<assigns.length; i++) {
+        if (assigns[i].done) continue;
+        if (count >= 3) break;
         const a = assigns[i];
         const ub=a.u?'<span class="badge br">Urgent</span>':'<span class="badge bw">'+a.d+'</span>';
-        html += `<div class="assign-item"><div class="chk${a.done?' done':''}" onclick="toggleAssign(${i})">${a.done?'&#10003;':''}</div><div><div class="at${a.done?' done':''}">${a.t}</div><div class="asub">Due ${a.d} &middot; ${ub}</div></div></div>`;
+        html += `<div class="assign-item stagger-item" style="padding:16px; margin-bottom:10px;"><div class="chk${a.done?' done':''}" onclick="toggleAssign(${i})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div><div class="at${a.done?' done':''}">${a.t}</div><div class="asub">Due ${a.d} &middot; ${ub}</div></div></div>`;
+        count++;
     }
-    parent.innerHTML = html;
+    parent.innerHTML = html || '<p style="color:var(--muted);font-size:14px;padding:20px;text-align:center;background:var(--bg2);border:1px dashed var(--border);border-radius:12px">No pending assignments!</p>';
 }
 
 function renderTT(){
   const tc:any={'Lecture':'bb','Lab':'bg','Tutorial':'bw','Project':'bb','Event':'br'};
   const g=document.getElementById('ttGrid'); 
+  const tcList = document.getElementById('today-classes-list');
+  const now = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayStr = days[now.getDay()];
+
   if(!g) return;
   g.innerHTML='';
+  if(tcList) tcList.innerHTML='';
+
   tt.forEach(d=>{
-    let h='<div class="sec-lbl">'+d.day+'</div>';
+    let h='<div class="sec-lbl stagger-item">'+d.day+'</div>';
     d.slots.forEach((s: any,i: number)=>{
       const num=userRole==='faculty'?'<span style="font-size:11px;color:var(--muted);min-width:16px;flex-shrink:0">'+(i+1)+'.</span>':'';
-      h+='<div class="tt-row">'+num+'<div class="tt-time">'+s.t+'</div><div class="tt-sub">'+s.s+' <span class="badge '+(tc[s.type]||'bb')+'">'+s.type+'</span></div><div class="tt-loc">'+s.l+'</div></div>';
+      const slotHtml = '<div class="tt-row stagger-item">'+num+'<div class="tt-time">'+s.t+'</div><div class="tt-sub">'+s.s+' <span class="badge '+(tc[s.type]||'bb')+'">'+s.type+'</span></div><div class="tt-loc">'+s.l+'</div></div>';
+      h += slotHtml;
+      if(d.day === todayStr && tcList) {
+        tcList.innerHTML += slotHtml;
+      }
     });
     g.innerHTML+=h;
   });
+
+  if(tcList && tcList.innerHTML==='') tcList.innerHTML='<p style="color:var(--muted);font-size:14px;padding:20px;text-align:center;background:var(--bg2);border:1px dashed var(--border);border-radius:12px">No classes scheduled for today.</p>';
 }
 
 (window as any).deleteItem = function(type: string, idx: number) {
@@ -906,7 +1009,7 @@ function renderTT(){
     let endpoint = '';
     if (type === 'assign') { assigns.splice(idx, 1); endpoint = 'assignments'; }
     if (type === 'event') { events.splice(idx, 1); endpoint = 'events'; }
-    if (type === 'ann') { anns.splice(idx, 1); endpoint = 'announcements'; }
+
     renderAll();
     await saveDb();
   };
@@ -918,7 +1021,7 @@ function renderTT(){
   document.body.appendChild(overlay);
 };
 
-function getAdminControls(type: string, idx: number) {
+function getFacultyControls(type: string, idx: number) {
   if (userRole !== 'faculty') return '';
   return `<div style="margin-top:12px; display:flex; gap:12px;">
     <button class="dl-btn" onclick="deleteItem('${type}', ${idx})" style="color:var(--danger); font-weight:600;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Delete</button>
@@ -927,40 +1030,32 @@ function getAdminControls(type: string, idx: number) {
 
 function renderAssigns(){
   const g=document.getElementById('assignList'); 
+  const tcDash=document.getElementById('task-count-dash');
   if(!g) return;
   g.innerHTML='';
   assigns.forEach((a: any,i: number)=>{
     const ub=a.u?'<span class="badge br">Urgent</span>':'<span class="badge bw">'+a.d+'</span>';
-    const fileHtml=a.file?'<div style="margin-top:6px"><span class="attach-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+a.file.name+'</span></span> <a class="dl-btn" href="'+a.file.url+'" download="'+a.file.name+'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download</a></div>':'';
-    const adm = getAdminControls('assign', i);
-    g.innerHTML+='<div class="assign-item"><div class="chk'+(a.done?' done':'')+'" onclick="toggleAssign('+i+')">'+(a.done?'&#10003;':'')+'</div><div style="flex:1;min-width:0"><div class="at'+(a.done?' done':'')+'">'+a.t+'</div><div class="asub">Due '+a.d+' &middot; '+ub+'</div>'+fileHtml+adm+'</div></div>';
+    const fileHtml=a.file?'<div style="margin-top:10px"><span class="attach-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+a.file.name+'</span></span> <a class="dl-btn" href="'+a.file.url+'" download="'+a.file.name+'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download</a></div>':'';
+    const adm = getFacultyControls('assign', i);
+    g.innerHTML+='<div class="assign-item stagger-item"><div class="chk'+(a.done?' done':'')+'" onclick="toggleAssign('+i+')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div style="flex:1;min-width:0"><div class="at'+(a.done?' done':'')+'">'+a.t+'</div><div class="asub">Due '+a.d+' &middot; '+ub+'</div>'+fileHtml+adm+'</div></div>';
   });
+  if (tcDash) tcDash.textContent = assigns.filter((a:any) => !a.done).length.toString();
   renderDashDeadlines();
 }
 
 function renderEvents(){
-  const c: any={'Festival':'bw','Career':'bg','Academic':'bb','Sports':'br','Admin':'bb'};
+  const c: any={'Festival':'bw','Career':'bg','Academic':'bb','Sports':'br','College':'bb'};
   const g=document.getElementById('eventList'); 
   if(!g) return;
   g.innerHTML='';
   events.forEach((e: any, i: number)=>{
-    const fileHtml=e.file?'<div style="margin-top:6px"><span class="attach-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+e.file.name+'</span></span> <a class="dl-btn" href="'+e.file.url+'" download="'+e.file.name+'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download</a></div>':'';
-    const adm = getAdminControls('event', i);
-    g.innerHTML+='<div class="event-item"><div class="e-date"><div class="e-day">'+e.day+'</div><div class="e-mon">'+e.mon+'</div></div><div style="flex:1;min-width:0"><div class="e-title">'+e.t+' <span class="badge '+(c[e.c]||'bb')+'">'+e.c+'</span></div><div class="e-loc">'+e.l+'</div>'+fileHtml+adm+'</div></div>';
+    const fileHtml=e.file?'<div style="margin-top:10px"><span class="attach-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+e.file.name+'</span></span> <a class="dl-btn" href="'+e.file.url+'" download="'+e.file.name+'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download</a></div>':'';
+    const adm = getFacultyControls('event', i);
+    g.innerHTML+='<div class="event-item stagger-item"><div class="e-date"><div class="e-day">'+e.day+'</div><div class="e-mon">'+e.mon+'</div></div><div style="flex:1;min-width:0"><div class="e-title">'+e.t+' <span class="badge '+(c[e.c]||'bb')+'">'+e.c+'</span></div><div class="e-loc">'+e.l+'</div>'+fileHtml+adm+'</div></div>';
   });
 }
 
-function renderAnns(){
-  const c: any={'Holiday':'bg','Admin':'bb','Exam':'bw','Urgent':'br'};
-  const g=document.getElementById('annList'); 
-  if(!g) return;
-  g.innerHTML='';
-  anns.forEach((a: any, i: number)=>{
-    const fileHtml=a.file?'<div style="margin-top:7px"><span class="attach-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>'+a.file.name+'</span></span> <a class="dl-btn" href="'+a.file.url+'" download="'+a.file.name+'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download</a></div>':'';
-    const adm = getAdminControls('ann', i);
-    g.innerHTML+='<div class="ann-item"><div class="ann-head"><div class="ann-title">'+a.t+' <span class="badge '+(c[a.c]||'bb')+'">'+a.c+'</span></div><span class="ann-date">'+a.d+'</span></div><div class="ann-body">'+a.b+'</div>'+fileHtml+adm+'</div>';
-  });
-}
+function renderAnns(){}
 
 function renderAttendance(){
   const barColor=(p: number)=>p>=75?'#10b981':p>=60?'#f59e0b':'#ef4444';
@@ -969,7 +1064,7 @@ function renderAttendance(){
   
   if (userRole === 'faculty') {
     g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
-      +students.map((s,i)=>`<tr>
+      +students.map((s,i)=>`<tr class="stagger-item">
         <td style="color:var(--muted)">${i+1}</td>
         <td><input type="text" class="att-input" style="width:100%;min-width:300px;text-align:left;" value="${s.name}" onchange="updateStudent(${i}, 'name', this.value)"></td>
         <td><input type="text" class="att-input" style="width:100%;min-width:120px;text-align:left;" value="${s.roll}" onchange="updateStudent(${i}, 'roll', this.value)"></td>
@@ -982,7 +1077,7 @@ function renderAttendance(){
       </tr>`).join('')+'</tbody></table>';
   } else {
     g.innerHTML='<table class="att-table"><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>This Month</th><th>%</th></tr></thead><tbody>'
-      +students.map((s,i)=>`<tr>
+      +students.map((s,i)=>`<tr class="stagger-item">
         <td style="color:var(--muted)">${i+1}</td>
         <td style="font-weight:500">${s.name}</td>
         <td style="color:var(--muted)">${s.roll}</td>
@@ -1035,16 +1130,24 @@ window.addEventListener('load',function(){
   }
   fetchInitialData();
   syncCollegeCode();
-  subscribeToBackgroundPush();
 });
 
 (window as any).saveCollegeCode = async function() {
-  const code = (document.getElementById('adm-code') as HTMLInputElement).value;
-  if(!code) return customAlert("Code cannot be empty");
+  const adm = document.getElementById('adm-code') as HTMLInputElement;
+  const fac = document.getElementById('fac-code') as HTMLInputElement;
+  if(!adm || !fac) return;
+  const code = adm.value;
+  const fCode = fac.value;
+  
+  if(!code || !fCode) return customAlert("Codes cannot be empty");
   try {
-    await setDoc(doc(db, 'system', 'config'), { collegeCode: code });
+    await setDoc(doc(db, 'system', 'config'), { 
+      collegeCode: code,
+      facultyCode: fCode
+    }, {merge: true});
     collegeCode = code;
-    customAlert("College Access Code updated successfully!");
+    facultyCode = fCode;
+    customAlert("Access Codes updated successfully!");
   } catch(e) {
     customAlert("Error updating code: " + e);
   }
@@ -1068,39 +1171,6 @@ function customAlert(msg: string) {
   document.body.appendChild(overlay);
 }
 
-async function subscribeToBackgroundPush() {
-  if ('serviceWorker' in navigator && 'PushManager' in window && Notification.permission !== 'denied') {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        const response = await fetch('/api/vapidPublicKey');
-        const { publicKey } = await response.json();
-        
-        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedVapidKey
-        });
 
-        await fetch('/api/subscribe', {
-          method: 'POST',
-          body: JSON.stringify(subscription),
-          headers: { 'content-type': 'application/json' }
-        });
-        console.log('Background Push Subscribed');
-      }
-    } catch(err) {
-      console.error('Failed to subscribe background push:', err);
-    }
-  }
-}
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
-  return outputArray;
-}
+

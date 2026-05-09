@@ -16,12 +16,13 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['name', 'email', 'role']) && data.keys().size() <= 6 &&
+      return data.keys().hasAll(['name', 'email', 'role']) && data.keys().size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.email is string && data.email.size() <= 200 &&
              data.role in ['student', 'faculty'] &&
-             (data.keys().hasAny(['phone']) ? (data.phone is string && data.phone.size() <= 20) : true) &&
-             (data.keys().hasAny(['division']) ? (data.division is string && data.division.size() <= 5) : true) &&
+             (data.keys().hasAny(['phone']) ? (data.phone is string && data.phone.size() <= 30) : true) &&
+             (data.keys().hasAny(['division']) ? (data.division is string && data.division.size() <= 100) : true) &&
+             (data.keys().hasAny(['roll']) ? (data.roll is string && data.roll.size() <= 50) : true) &&
              (data.keys().hasAny(['createdAt']) ? (data.createdAt is number) : true);
     }
 
@@ -80,9 +81,9 @@ service cloud.firestore {
     }
     
     match /users/{userId} {
-      allow read: if isSignedIn(); // Allow reading profiles for app display
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming());
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'division']);
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'division', 'roll', 'role']);
     }
 
     match /assignments/{assignmentId} {

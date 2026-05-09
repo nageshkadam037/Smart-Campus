@@ -65,11 +65,14 @@
         <div class="p-badge" id="drawerBadge">Student</div>
       </div>
       <div class="divider"></div>
-      <div class="pf"><label>Full name</label><input id="pf-name" value="Alex Johnson"></div>
+      <div class="pf"><label>Full name</label><input id="pf-name" value="Alex Johnson"><p id="student-name-note" style="font-size:10px; color:var(--muted); margin-top:4px; display:none;">Canonical name synced from attendance records.</p></div>
       <div class="pf"><label>Email</label><input id="pf-email" value="alex.johnson@smartcampus.edu" type="email"></div>
       <div class="pf"><label>Phone</label><input id="pf-phone" value="+91 98765 43210" type="tel"></div>
-      <div class="pf"><label id="pf-id-label">Student ID</label><input id="pf-id" value="SC2024-0187" readonly></div>
+      <div class="pf"><label id="pf-id-label">Student ID</label><input id="pf-id" value="SC2024-0187"></div>
       <div class="pf"><label>Department</label><input id="pf-dept" value="Computer Science &amp; Eng." readonly></div>
+      
+
+
       <button class="save-btn" onclick="saveProfile()">Save changes</button>
       <div class="saved-msg" id="savedMsg"></div>
     </div>
@@ -103,10 +106,7 @@
         <svg id="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
         <svg id="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
       </button>
-      <div class="notif-wrap" onclick="showPage('announcements')">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <div class="notif-dot"></div>
-      </div>
+
       <button class="logout-btn" onclick="doLogout()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span class="logout-lbl">Logout</span>
@@ -144,22 +144,36 @@
         <div class="stat-grid">
           <div class="stat-card" id="studentAttCard" style="display:flex;align-items:center;justify-content:space-between">
             <div>
-              <div class="stat-label">Attendance</div>
-              <div class="stat-val" style="color:var(--success)">87%</div>
+              <div class="stat-label">Your Attendance</div>
+              <div class="stat-val" style="color:var(--success)">87.4%</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px;">Good standing</div>
             </div>
-            <div style="width:48px;height:48px;position:relative">
+            <div style="width:64px;height:64px;position:relative">
               <svg viewBox="0 0 36 36" style="width:100%;height:100%;transform:rotate(-90deg)">
-                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--border)" stroke-width="3"></circle>
-                <circle id="att-circle" cx="18" cy="18" r="15.9155" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-dasharray="100 100" stroke-dashoffset="100" style="transition:stroke-dashoffset 1.5s ease-out"></circle>
+                <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--bg-hover)" stroke-width="4"></circle>
+                <circle id="att-circle" cx="18" cy="18" r="15.9155" fill="none" stroke="var(--success)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100 100" stroke-dashoffset="100" style="transition:stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)"></circle>
               </svg>
             </div>
           </div>
+          <div class="stat-card" style="display:flex;flex-direction:column;justify-content:center">
+            <div class="stat-label">Upcoming Tasks</div>
+            <div class="stat-val" id="task-count-dash">3</div>
+            <div style="font-size:12px; color:var(--muted); margin-top:4px;">Due this week</div>
+          </div>
         </div>
-        <div class="sec-lbl">Today's classes</div>
-        <div class="tt-row"><div class="tt-time">9–10 AM</div><div class="tt-sub">Data Structures <span class="badge bb">Lab</span></div><div class="tt-loc">Room 204</div></div>
-        <div class="tt-row"><div class="tt-time">11–12 PM</div><div class="tt-sub">DBMS <span class="badge bg">Lecture</span></div><div class="tt-loc">Room 101</div></div>
-        <div class="tt-row" style="border:none"><div class="tt-time">2–3 PM</div><div class="tt-sub">AI &amp; ML <span class="badge bw">Tutorial</span></div><div class="tt-loc">Room 307</div></div>
-        <div class="sec-lbl">Upcoming deadlines</div>
+        
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:40px 0 20px;">
+          <h3 class="sec-lbl" style="margin:0">Today's Schedule</h3>
+          <button onclick="showPage('schedule')" style="font-size:12px; color:var(--accent); font-weight:600; background:none; border:none; cursor:pointer;">View Weekly</button>
+        </div>
+        
+        <div id="today-classes-list">
+          <div class="tt-row"><div class="tt-time">09:00 AM</div><div class="tt-sub">Data Structures <span class="badge bb">Lab</span></div><div class="tt-loc">Room 204</div></div>
+          <div class="tt-row"><div class="tt-time">11:00 AM</div><div class="tt-sub">DBMS <span class="badge bg">Lecture</span></div><div class="tt-loc">Room 101</div></div>
+          <div class="tt-row" style="border-bottom:1px solid var(--border)"><div class="tt-time">02:00 PM</div><div class="tt-sub">AI &amp; ML <span class="badge bw">Tutorial</span></div><div class="tt-loc">Room 307</div></div>
+        </div>
+
+        <div class="sec-lbl">Active Assignments</div>
         <div id="dash-deadlines"></div>
       </div>
 
@@ -254,7 +268,7 @@
                 <option value="Career">Career</option>
                 <option value="Academic">Academic</option>
                 <option value="Sports">Sports</option>
-                <option value="Admin">Admin</option>
+                <option value="College">College</option>
               </select>
             </div>
             <label class="file-upload-label" id="evFileLabel" onclick="document.getElementById('evFile').click()">
@@ -267,24 +281,7 @@
         </div>
       </div>
 
-      <!-- UPDATES -->
-      <div id="pg-announcements" class="pg">
-        <div class="sec-lbl">Important Notifications & Updates</div>
-        <div id="annList"></div>
-        <div id="facAnn" style="display:none;margin-top:14px">
-          <div class="sec-lbl">Post Update</div>
-          <div class="fac-form">
-            <input class="add-in" id="annT" placeholder="Title...">
-            <input class="add-in" id="annB" placeholder="Message...">
-            <label class="file-upload-label" id="annFileLabel" onclick="document.getElementById('annFile').click()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <span id="annFileLabelTxt">Attach document (optional)</span>
-            </label>
-            <input type="file" id="annFile" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" style="display:none" onchange="handleAnnFile(event)">
-            <button class="add-btn" style="align-self:flex-start" onclick="addAnn()">Post Update</button>
-          </div>
-        </div>
-      </div>
+
 
       <!-- ATTENDANCE (faculty only) -->
       <div id="pg-attendance" class="pg">
@@ -297,7 +294,7 @@
           <div class="stat-card" style="flex:1;min-width:100px"><div class="stat-label">Avg Attendance</div><div class="stat-val" style="color:var(--success)">0%</div></div>
           <div class="stat-card" style="flex:1;min-width:100px;cursor:pointer;" onclick="toggleDefaultersModal()"><div class="stat-label">Defaulters (Click)</div><div class="stat-val" style="color:var(--danger)" id="defaulterCount">0</div></div>
         </div>
-        <div id="attList"></div>
+        <div id="attList" style="overflow-x: auto;"></div>
 
         <!-- Defaulters Modal -->
         <div id="defaulterModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center; padding:20px;">
@@ -311,29 +308,6 @@
         </div>
       </div>
 
-      <!-- ADMIN PANEL -->
-      <div id="pg-admin" class="pg">
-        <div class="sec-lbl">College Administration</div>
-        <div class="stat-grid">
-          <div class="stat-card">
-            <div class="stat-label">Security Settings</div>
-            <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
-              <div class="pf" style="padding:0">
-                 <label>College Access Code</label>
-                 <div style="display:flex; gap:8px">
-                   <input id="adm-code" type="text" placeholder="Set unique code..." style="flex:1">
-                   <button class="add-btn" onclick="saveCollegeCode()" style="flex:none; width:auto; padding:0 16px">Update</button>
-                 </div>
-                 <p style="font-size:12px; color:var(--muted); margin-top:8px">Users must enter this code to Login. Change this to revoke access. Default is "25FC146".</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="sec-lbl" style="margin-top:24px">Manage Users (Coming Soon)</div>
-        <div class="stat-card" style="background:transparent; border:1px dashed var(--border)">
-          <p style="text-align:center; color:var(--muted); font-size:14px">User management features will appear here.</p>
-        </div>
       </div>
     </div>
   </div>
@@ -362,6 +336,7 @@
   </div>
 
 </div>
+<div id="global-toast"></div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
