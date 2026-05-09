@@ -498,6 +498,8 @@ onAuthStateChanged(auth, async (user) => {
     if (facSch) facSch.style.display='block';
     const expBtn = document.getElementById('exportCsvBtn') as HTMLButtonElement;
     if (expBtn) expBtn.style.display='block';
+    const stTasksCard = document.getElementById('studentTasksCard');
+    if (stTasksCard) stTasksCard.style.display='none';
   } else {
     pfName.readOnly = true;
     if(nameNote) nameNote.style.display = 'block';
@@ -517,6 +519,8 @@ onAuthStateChanged(auth, async (user) => {
     if (bnAtt) bnAtt.style.display='none';
     const stAttCard = document.getElementById('studentAttCard');
     if (stAttCard) stAttCard.style.display='block';
+    const stTasksCard = document.getElementById('studentTasksCard');
+    if (stTasksCard) stTasksCard.style.display='block';
     const facEv = document.getElementById('facEvent');
     if (facEv) facEv.style.display='none';
     const facSch = document.getElementById('facSchedule');
