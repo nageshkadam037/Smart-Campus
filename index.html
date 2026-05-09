@@ -134,6 +134,9 @@
       <button class="snav-btn" id="sn-attendance" onclick="showPage('attendance')" style="display:none">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Attendance
       </button>
+      <button class="snav-btn" id="sn-mark-att" onclick="showPage('mark-att')" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 14l2 2 4-4"/></svg>Mark Attendance
+      </button>
     </div>
 
     <!-- PAGES -->
@@ -308,6 +311,29 @@
         </div>
       </div>
 
+      <!-- MARK ATTENDANCE (FACULTY ONLY) -->
+      <div id="pg-mark-att" class="pg">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px">
+            <h3 class="sec-lbl" style="margin:0">Mark Daily Attendance</h3>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+               <input type="date" id="att-date-picker" class="add-in" style="min-width:160px; padding:10px 14px;" onchange="refreshRollGrid()">
+               <button class="add-btn" style="background:var(--bg); border:1px solid var(--border); color:var(--txt)" onclick="resetAbsentRolls()" title="Clear all marks">Reset</button>
+               <button class="add-btn" onclick="exportDailyAttendance()" title="Export list of present students">Export Present List</button>
+            </div>
+        </div>
+        <div class="roll-grid" id="roll-grid"></div>
+        <div style="margin-top:16px; display:flex; gap:20px; align-items:center; font-size:14px; color:var(--muted); background:var(--bg2); padding:12px 20px; border-radius:12px; border:1px solid var(--border)">
+          <div style="display:flex; align-items:center; gap:8px; font-weight:600">
+            <div style="width:16px; height:16px; border-radius:50%; background:var(--danger)"></div> 
+            <span>Absent (Click to mark)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; font-weight:600">
+            <div style="width:16px; height:16px; border-radius:50%; background:var(--bg); border:2px solid var(--border)"></div> 
+            <span>Present</span>
+          </div>
+        </div>
+      </div>
+
       </div>
     </div>
   </div>
@@ -331,6 +357,9 @@
 
       <button class="bnav-item" id="bn-attendance" onclick="showPage('attendance')" style="display:none">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Attend
+      </button>
+      <button class="bnav-item" id="bn-mark-att" onclick="showPage('mark-att')" style="display:none">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/></svg>Mark
       </button>
     </div>
   </div>

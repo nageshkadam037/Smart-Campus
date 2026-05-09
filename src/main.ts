@@ -2,18 +2,29 @@ import Cropper from 'cropperjs';
 import 'cropperjs/dist/cropper.css';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'system', 'config'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('offline')) {
+      console.error("Firestore is offline. Check your connection.");
+    }
+  }
+}
+testConnection();
+
 let userRole='student';
 let userDivision='A';
 let collegeCode = '25FC146';
 let facultyCode = '25FC01';
-const pages=['dashboard','schedule','assignments','events','attendance'];
+const pages=['dashboard','schedule','assignments','events','attendance','mark-att'];
 
 async function syncCollegeCode() {
   try {
@@ -490,6 +501,12 @@ onAuthStateChanged(auth, async (user) => {
     if (snAtt) snAtt.style.display='flex';
     const bnAtt = document.getElementById('bn-attendance');
     if (bnAtt) bnAtt.style.display='flex';
+    
+    const snMarkAtt = document.getElementById('sn-mark-att');
+    if (snMarkAtt) snMarkAtt.style.display='flex';
+    const bnMarkAtt = document.getElementById('bn-mark-att');
+    if (bnMarkAtt) bnMarkAtt.style.display='flex';
+
     const stAttCard = document.getElementById('studentAttCard');
     if (stAttCard) stAttCard.style.display='none';
     const facEv = document.getElementById('facEvent');
@@ -517,6 +534,12 @@ onAuthStateChanged(auth, async (user) => {
     if (snAtt) snAtt.style.display='none';
     const bnAtt = document.getElementById('bn-attendance');
     if (bnAtt) bnAtt.style.display='none';
+    
+    const snMarkAtt = document.getElementById('sn-mark-att');
+    if (snMarkAtt) snMarkAtt.style.display='none';
+    const bnMarkAtt = document.getElementById('bn-mark-att');
+    if (bnMarkAtt) bnMarkAtt.style.display='none';
+
     const stAttCard = document.getElementById('studentAttCard');
     if (stAttCard) stAttCard.style.display='block';
     const stTasksCard = document.getElementById('studentTasksCard');
@@ -527,6 +550,12 @@ onAuthStateChanged(auth, async (user) => {
     if (facSch) facSch.style.display='none';
     const expBtn = document.getElementById('exportCsvBtn') as HTMLButtonElement;
     if (expBtn) expBtn.style.display='none';
+
+    // Hide Daily Attendance Marking Section
+    const markSec = document.getElementById('markAttendanceSec');
+    const markDiv = document.getElementById('fac-divider-alt');
+    if(markSec) markSec.style.display='none';
+    if(markDiv) markDiv.style.display='none';
   }
   
   setTimeout(() => {
@@ -716,6 +745,10 @@ let cropperInst: Cropper | null = null;
     if(b) b.classList.toggle('on',x===p);
   });
   
+  if (p === 'mark-att') {
+    (window as any).refreshRollGrid();
+  }
+
   if (p === 'dashboard') {
       const circle = document.getElementById('att-circle');
       if(circle) {
@@ -1170,10 +1203,146 @@ function customAlert(msg: string) {
   okBtn.style.cssText = 'padding:8px 24px;border-radius:6px;border:none;background:var(--accent, #a855f7);color:#fff;cursor:pointer;font-weight:bold;';
   okBtn.onclick = () => document.body.removeChild(overlay);
   
-  box.appendChild(okBtn);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
+
+// --- DAILY ATTENDANCE MARKING LOGIC ---
+let attendanceData: { [date: string]: Set<number> } = {};
+
+async function saveAttendance(date: string) {
+  if (userRole !== 'faculty') return;
+  const currentAbsent = attendanceData[date];
+  if (!currentAbsent) return;
+  try {
+    const absentList = Array.from(currentAbsent).sort((a,b) => a-b);
+    await setDoc(doc(db, 'attendance', `absent_${userDivision}_${date}`), {
+      absent: absentList,
+      updatedAt: Date.now()
+    });
+  } catch (e) {
+    console.error('Failed to save attendance', e);
+  }
+}
+
+async function loadAttendance(date: string) {
+  try {
+    const docSnap = await getDoc(doc(db, 'attendance', `absent_${userDivision}_${date}`));
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      attendanceData[date] = new Set(data.absent || []);
+    } else {
+      attendanceData[date] = new Set();
+    }
+  } catch (e) {
+    console.warn('Failed to load attendance for', date);
+    if (!attendanceData[date]) attendanceData[date] = new Set();
+  }
+}
+
+(window as any).refreshRollGrid = async function() {
+  const g = document.getElementById('roll-grid');
+  const datePicker = document.getElementById('att-date-picker') as HTMLInputElement;
+  if (!g) return;
+  
+  // Initialize date to today if empty
+  if (datePicker && !datePicker.value) {
+    const today = new Date().toISOString().split('T')[0];
+    datePicker.value = today;
+  }
+  
+  const selectedDate = datePicker.value || new Date().toISOString().split('T')[0];
+  if (!attendanceData[selectedDate]) {
+    await loadAttendance(selectedDate);
+  }
+  
+  const currentAbsent = attendanceData[selectedDate];
+
+  let html = '';
+  for (let i = 1; i <= 70; i++) {
+    const isAbsent = currentAbsent.has(i);
+    html += `<div class="roll-bubble${isAbsent ? ' absent' : ''}" onclick="toggleRollAbsent(${i})">${i}</div>`;
+  }
+  g.innerHTML = html;
+};
+
+(window as any).toggleRollAbsent = async function(num: number) {
+  const datePicker = document.getElementById('att-date-picker') as HTMLInputElement;
+  const selectedDate = datePicker?.value || new Date().toISOString().split('T')[0];
+  if (!attendanceData[selectedDate]) attendanceData[selectedDate] = new Set();
+  
+  const currentAbsent = attendanceData[selectedDate];
+  
+  if (currentAbsent.has(num)) {
+    currentAbsent.delete(num);
+  } else {
+    currentAbsent.add(num);
+  }
+  (window as any).refreshRollGrid();
+  await saveAttendance(selectedDate);
+};
+
+(window as any).resetAbsentRolls = async function() {
+  const datePicker = document.getElementById('att-date-picker') as HTMLInputElement;
+  const selectedDate = datePicker?.value || new Date().toISOString().split('T')[0];
+  if (attendanceData[selectedDate]) {
+    attendanceData[selectedDate].clear();
+  } else {
+    attendanceData[selectedDate] = new Set();
+  }
+  (window as any).refreshRollGrid();
+  await saveAttendance(selectedDate);
+};
+
+(window as any).exportDailyAttendance = function() {
+  const datePicker = document.getElementById('att-date-picker') as HTMLInputElement;
+  const date = datePicker?.value || new Date().toISOString().split('T')[0];
+  
+  if (!attendanceData[date]) attendanceData[date] = new Set();
+  const currentAbsent = attendanceData[date];
+
+  // Present students are those NOT in the absent set for the selected date
+  const presentList: number[] = [];
+  for (let i = 1; i <= 70; i++) {
+    if (!currentAbsent.has(i)) {
+      presentList.push(i);
+    }
+  }
+
+  if (presentList.length === 0) {
+    return customAlert("No students marked as present for " + date);
+  }
+
+  const reportRows = [
+    ['Date:', date],
+    [],
+    ['Roll No', 'Name', 'Status']
+  ];
+  presentList.forEach(num => {
+    const student = students[num-1];
+    const name = student ? student.name : 'Unknown';
+    reportRows.push([num.toString(), `"${name}"`, 'Present']);
+  });
+
+  const csvStr = reportRows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Present_Students_${userDivision}_${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  const toast = document.getElementById('global-toast');
+  if (toast) {
+    toast.textContent = `Exported ${presentList.length} present students!`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+};
 
 
 

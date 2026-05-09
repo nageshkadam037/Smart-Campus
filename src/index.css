@@ -244,6 +244,47 @@ html,body{height:100%;background:var(--bg);background-image: radial-gradient(var
 .att-bar-wrap{width:100px;height:8px;background:var(--border);border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:12px;}
 .att-bar{height:100%;border-radius:4px}
 .att-input{width:70px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--txt);font-size:14px;font-weight:600;outline:none;text-align:center;}
+#att-date-picker::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+.roll-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  background: var(--bg2);
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+.roll-bubble {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--txt);
+}
+.roll-bubble:hover {
+  transform: scale(1.1);
+  border-color: var(--accent);
+}
+.roll-bubble.absent {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+}
+
 .defaulter-item{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;margin-bottom:12px}
 .def-name{font-size:15px;font-weight:600;color:#991B1B}
 .def-roll{font-size:13px;color:#B91C1C}
